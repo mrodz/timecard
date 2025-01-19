@@ -26,7 +26,7 @@ def main():
     try:
         subprocess.check_call([sea, "migrate", "refresh"], env=my_env, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError:
-        print("Could not migrate database", file=sys.stderr)
+        print("❌ Could not migrate database", file=sys.stderr)
         exit(1)
     
     print("Migrated database, starting code generation...")
@@ -34,10 +34,10 @@ def main():
     try:
         subprocess.check_call([sea, "generate", "entity", "-o", ENTITY_DST, "--with-serde", "both", "--model-extra-derives", ','.join(ENTITY_EXTRA_DERIVES)], env=my_env, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError:
-        print("Could not generate code for entities", file=sys.stderr)
+        print("❌ Could not generate code for entities", file=sys.stderr)
         exit(1)
         
-    print("Finished code generation\nDone ✅")
+    print("Finished code generation\n✅ Done")
 if __name__ == "__main__":
     main()
 
