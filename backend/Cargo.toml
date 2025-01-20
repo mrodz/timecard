@@ -28,3 +28,5 @@ aws-sdk-cognitoidentityprovider = "1.64.0"
 tower-cookies = "0.11.0"
 futures = "0.3.31"
 axum-extra = { version = "0.10.0", features = ["cookie", "typed-header"] }
+reqwest = { version = "0.12.12", features = ["json"] }
+dotenv = "0.15.0"

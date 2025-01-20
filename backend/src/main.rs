@@ -1,10 +1,13 @@
+extern crate dotenv;
+
 mod context;
 mod routes;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context as AnyhowContext, Result};
 use aws_config::{meta::region::RegionProviderChain, Region};
 use axum::{error_handling::HandleErrorLayer, http::{Method, StatusCode, Uri}, routing::get, BoxError, Json, Router};
 use context::Context;
+use dotenv::dotenv;
 use sea_orm::{Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use tokio::time::error::Elapsed;
@@ -16,6 +19,8 @@ use tower_http::timeout::TimeoutLayer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenv::dotenv().context("could not load environment file")?;
+
     let region_provider =
         RegionProviderChain::first_try("us-west-1").or_else(Region::from_static("us-west-1"));
 
@@ -32,6 +37,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(root))
         .route("/user", get(routes::user::get_user))
+        .route("/auth/redirect", get(routes::cognito::aws_cognito_redirect))
         .layer(ServiceBuilder::new()
             .layer(cors)
             .layer(timeout)
@@ -39,7 +45,7 @@ async fn main() -> Result<()> {
         )
         .with_state(context);
 
-    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 3000))).await?;
+    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 4000))).await?;
 
     axum::serve(listener, app).await?;
 
