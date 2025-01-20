@@ -1,6 +1,11 @@
 use aws_config::SdkConfig;
+use aws_sdk_cognitoidentityprovider::{
+    operation::get_user::{GetUserError, GetUserOutput}, Client as AwsCognitoClient,
+};
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
+use aws_sdk_secretsmanager::Client as AwsSecretsClient;
 use aws_smithy_runtime_api::{client::result::SdkError, http::Response};
+use axum::{body::Body, http::StatusCode, response::IntoResponse};
 use tokio::sync::RwLock;
 
 use std::future::Future;
@@ -16,6 +21,18 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
+
+// Tell axum how to convert `AppError` into a response.
+impl IntoResponse for ContextError {
+    fn into_response(self) -> axum::http::Response<Body> {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self),
+        )
+            .into_response()
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum RDSCredentialsError {
     #[error("error with secrets manager")]
@@ -24,6 +41,14 @@ pub enum RDSCredentialsError {
     SecretNotFound,
     #[error("this secret does not conform to the JSON specification required")]
     ParseError,
+}
+
+#[derive(Error, Debug)]
+pub enum AuthError {
+    #[error("error with cognito interface")]
+    AwsGetUser(#[from] SdkError<GetUserError, Response>),
+	#[error("missing authentication header")]
+	MissingAuthenticationHeader,
 }
 
 #[derive(Error, Debug)]
@@ -38,12 +63,16 @@ pub enum ContextError {
     BadSchema(String),
     #[error("could not parse url")]
     UrlParse(#[from] url::ParseError),
+    #[error("could not authenticate")]
+    AuthError(#[from] AuthError),
 }
 
 #[derive(Clone, Debug)]
 pub struct Context {
     aws_sdk_config: Arc<RwLock<SdkConfig>>,
     database_connection: Arc<RwLock<DatabaseConnection>>,
+    aws_secrets: Option<Arc<RwLock<AwsSecretsClient>>>,
+    aws_cognito: Arc<RwLock<AwsCognitoClient>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -54,11 +83,9 @@ struct RDSCredentials {
 
 impl RDSCredentials {
     pub async fn new<S: Into<String>>(
-        sdk_config: &SdkConfig,
+        client: &AwsSecretsClient,
         secret_id: S,
     ) -> Result<Self, RDSCredentialsError> {
-        let client = aws_sdk_secretsmanager::Client::new(sdk_config);
-
         let response = client
             .get_secret_value()
             .secret_id(secret_id)
@@ -95,11 +122,16 @@ impl Context {
             return Err(ContextError::BadSchema(scheme.to_owned()));
         }
 
+        let mut aws_secrets = None;
+
         if rds_location.password().is_none() || rds_location.username().is_empty() {
             let Some(rds_secret_id) = rds_secret_id else {
                 return Err(ContextError::MissingPassword);
             };
-            let database_credentials = RDSCredentials::new(&sdk_config, rds_secret_id).await?;
+
+            let secrets_client = AwsSecretsClient::new(&sdk_config);
+
+            let database_credentials = RDSCredentials::new(&secrets_client, rds_secret_id).await?;
 
             rds_location
                 .set_password(Some(&database_credentials.password))
@@ -107,15 +139,21 @@ impl Context {
             rds_location
                 .set_username(&database_credentials.username)
                 .expect("postgres schema accepts username");
+
+            aws_secrets = Some(Arc::new(RwLock::new(secrets_client)));
         }
 
         let db = Database::connect(rds_location).await?;
 
         migration::Migrator::up(&db, None).await?;
 
+        let cognito_client = AwsCognitoClient::new(&sdk_config);
+
         Ok(Self {
             aws_sdk_config: Arc::new(RwLock::new(sdk_config)),
             database_connection: Arc::new(RwLock::new(db)),
+            aws_cognito: Arc::new(RwLock::new(cognito_client)),
+            aws_secrets,
         })
     }
 
@@ -132,16 +170,16 @@ impl Context {
         Ok(output)
     }
 
-	/// # Example usage
-	/// ```no_run
-	///self.database_connection(|database_connection| {
-	///  Box::pin(async move {
-	///    Migrator::up(database_connection, None).await?;
-	///    Ok::<_, ContextError>(())
-	///   })
-	/// })
-	/// .await?;
-	/// ```
+    /// # Example usage
+    /// ```no_run
+    ///self.database_connection(|database_connection| {
+    ///  Box::pin(async move {
+    ///    Migrator::up(database_connection, None).await?;
+    ///    Ok::<_, ContextError>(())
+    ///   })
+    /// })
+    /// .await?;
+    /// ```
     pub async fn database_connection<F, T, E>(&self, callback: F) -> Result<T, ContextError>
     where
         F: for<'c> FnOnce(
@@ -157,14 +195,58 @@ impl Context {
         Ok(output)
     }
 
-    pub async fn migrate(&self) -> Result<(), ContextError> {
-		let lock = self.database_connection.read().await;
-		Migrator::up(&*lock, None).await?;
-		Ok(())
+    pub async fn aws_cognito_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
+    where
+        F: for<'c> FnOnce(
+                &'c AwsCognitoClient,
+            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
+            + Send,
+        T: Send,
+        E: Send,
+        ContextError: From<E>,
+    {
+        let lock = self.aws_cognito.read().await;
+        let output = callback(&lock).await?;
+        Ok(output)
     }
 
-	pub async fn test_database_connection(&self) -> Result<(), ContextError> {
-		self.database_connection.read().await.ping().await?;
-		Ok(())
-	}
+    pub async fn aws_secrets_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
+    where
+        F: for<'c> FnOnce(
+                Option<&'c AwsSecretsClient>,
+            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
+            + Send,
+        T: Send,
+        E: Send,
+        ContextError: From<E>,
+    {
+        let lock =
+            futures::future::OptionFuture::from(self.aws_secrets.as_ref().map(|c| c.read())).await;
+        let output = callback(lock.as_deref()).await?;
+        Ok(output)
+    }
+
+    pub async fn load_cognito_user(&self, access_token: &str) -> Result<GetUserOutput, ContextError> {
+        let client_lock = self.aws_cognito.read().await;
+
+        let get_user_output = client_lock
+            .get_user()
+            .access_token(access_token)
+            .send()
+            .await
+            .map_err(AuthError::from)?;
+
+		Ok(get_user_output)
+    }
+
+    pub async fn migrate(&self) -> Result<(), ContextError> {
+        let lock = self.database_connection.read().await;
+        Migrator::up(&*lock, None).await?;
+        Ok(())
+    }
+
+    pub async fn test_database_connection(&self) -> Result<(), ContextError> {
+        self.database_connection.read().await.ping().await?;
+        Ok(())
+    }
 }

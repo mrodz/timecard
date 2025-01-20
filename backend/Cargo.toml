@@ -11,7 +11,7 @@ anyhow = "1.0.95"
 aws-config = "1.5.14"
 aws-sdk-secretsmanager = "1.58.0"
 aws-smithy-runtime-api = "1.7.3"
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["macros"] }
 sea-orm = { version = "1.1.1", features = [
 	"sqlx-postgres",
 	"runtime-tokio-rustls",
@@ -22,5 +22,9 @@ serde_json = "1.0.135"
 thiserror = { version = "2.0.11" }
 tokio = { version = "1.43.0", features = ["full"] }
 tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["cors"] }
+tower-http = { version = "0.6.2", features = ["cors", "timeout"] }
 url = "2.5.4"
+aws-sdk-cognitoidentityprovider = "1.64.0"
+tower-cookies = "0.11.0"
+futures = "0.3.31"
+axum-extra = { version = "0.10.0", features = ["cookie", "typed-header"] }
