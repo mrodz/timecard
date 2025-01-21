@@ -1,5 +1,6 @@
-use axum::{extract::Query, http::StatusCode, response::IntoResponse};
-use serde::Deserialize;
+use axum::{extract::Query, http::{HeaderMap, HeaderValue, StatusCode}, response::IntoResponse, Json};
+use axum_extra::headers::Authorization;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tower_cookies::{Cookie, Cookies};
 
@@ -7,6 +8,16 @@ use tower_cookies::{Cookie, Cookies};
 pub struct RedirectParams {
     code: Option<String>,
 }
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct AwsCognitoRedirect {
+	access_token: String,
+	expires_in: i64,
+	id_token: String,
+	refresh_token: String,
+	token_type: String,
+}
+
 pub async fn aws_cognito_redirect(
     Query(params): Query<RedirectParams>,
     cookies: Cookies,
@@ -22,8 +33,9 @@ pub async fn aws_cognito_redirect(
     let params = [
         ("grant_type", "authorization_code"),
         ("client_id", &std::env::var("COGNITO_CLIENT_ID").unwrap()),
+		("client_secret", &std::env::var("COGNITO_CLIENT_SECRET").unwrap()),
         ("code", &code),
-        ("redirect_uri", "http://localhost:3000/aws_cognito_redirect"),
+        ("redirect_uri", "http://localhost:5173/auth/"),
     ];
 
     let response = client.post(token_url).form(&params).send().await;
@@ -31,13 +43,15 @@ pub async fn aws_cognito_redirect(
     match response {
         Ok(res) => {
             if res.status().is_success() {
-                let tokens: Value = res .json().await.unwrap();
+                let tokens: AwsCognitoRedirect = res.json().await.unwrap();
+
                 dbg!(&tokens);
-                if let Some(access_token) = tokens.get("access_token").and_then(|t| t.as_str()) {
-                    cookies.add(Cookie::new("access_token", access_token.to_string()));
-                }
-                (StatusCode::SEE_OTHER, [("Location", "/")]).into_response()
+
+				cookies.add(Cookie::new("access_token", tokens.access_token.clone()));
+
+                (StatusCode::OK, Json::from(tokens)).into_response()
             } else {
+				eprintln!("{:?}", res.text().await);
                 (StatusCode::BAD_REQUEST, "Failed to exchange code for token").into_response()
             }
         }

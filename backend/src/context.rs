@@ -35,7 +35,7 @@ impl IntoResponse for ContextError {
 
 #[derive(Error, Debug)]
 pub enum RDSCredentialsError {
-    #[error("error with secrets manager")]
+    #[error("error with secrets manager: {0}")]
     Aws(#[from] SdkError<GetSecretValueError, Response>),
     #[error("this secret does not exist")]
     SecretNotFound,
@@ -45,25 +45,25 @@ pub enum RDSCredentialsError {
 
 #[derive(Error, Debug)]
 pub enum AuthError {
-    #[error("error with cognito interface")]
+    #[error("error with cognito interface: {0}")]
     AwsGetUser(#[from] SdkError<GetUserError, Response>),
-	#[error("missing authentication header")]
-	MissingAuthenticationHeader,
+	#[error("missing authentication cookie")]
+	MissingAuthenticationCookie,
 }
 
 #[derive(Error, Debug)]
 pub enum ContextError {
-    #[error("could not load credentials for database")]
+    #[error("could not load credentials for database: {0}")]
     RDSCredentialsInitialization(#[from] RDSCredentialsError),
-    #[error("error from database")]
+    #[error("error from database: {0}")]
     Database(#[from] DbErr),
     #[error("database connection string is missing a password, and no secret key was found")]
     MissingPassword,
     #[error("database schema should be `postgres`, found `{0}`")]
     BadSchema(String),
-    #[error("could not parse url")]
+    #[error("could not parse url: {0}")]
     UrlParse(#[from] url::ParseError),
-    #[error("could not authenticate")]
+    #[error("could not authenticate: {0}")]
     AuthError(#[from] AuthError),
 }
 

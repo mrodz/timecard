@@ -4,7 +4,7 @@ mod context;
 mod routes;
 
 use anyhow::{anyhow, Context as AnyhowContext, Result};
-use aws_config::{meta::region::RegionProviderChain, Region};
+use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
 use axum::{error_handling::HandleErrorLayer, http::{Method, StatusCode, Uri}, routing::get, BoxError, Json, Router};
 use context::Context;
 use dotenv::dotenv;
@@ -26,11 +26,15 @@ async fn main() -> Result<()> {
 
     let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::v2024_03_28()).await;
 
+    println!("{:?}", std::env::var("AWS_PROFILE"));
+
     let context = Context::new(sdk_config, None::<&str>, "postgres://postgres:postgres@localhost:3588/postgres").await?;
 
     context.test_database_connection().await?;
     
-    let cors = CorsLayer::new().allow_origin(Any);
+    let cors_origins = ["http://localhost:5173".parse().unwrap()];
+
+    let cors = CorsLayer::new().allow_origin(cors_origins).allow_credentials(true).allow_methods([Method::GET, Method::HEAD, Method::PUT, Method::PATCH, Method::POST, Method::DELETE]);
     let cookies = CookieManagerLayer::new();
     let timeout = TimeoutLayer::new(Duration::from_secs(10));
 
