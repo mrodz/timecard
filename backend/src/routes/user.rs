@@ -1,17 +1,28 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
-use axum::{body::Body, extract::{rejection::JsonRejection, State}, http::{Response, StatusCode}, response::IntoResponse, Extension, Json};
+use axum::{
+    body::Body,
+    extract::{rejection::JsonRejection, State},
+    http::{Response, StatusCode},
+    response::IntoResponse,
+    Extension, Json,
+};
 use axum_extra::{
-    extract::CookieJar, headers::{authorization::Bearer, Authorization}, TypedHeader
+    extract::CookieJar,
+    headers::{authorization::Bearer, Authorization},
+    TypedHeader,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use thiserror::Error;
 
 use crate::context::{AuthError, Context, ContextError};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetUser {
-    user: String,
+    username: String,
+    user_attributes: HashMap<String, Option<String>>,
 }
 
 #[derive(Debug, Error)]
@@ -20,10 +31,8 @@ pub enum GetUserError {
     ContextError(#[from] ContextError),
 }
 
-
 impl IntoResponse for GetUserError {
     fn into_response(self) -> Response<Body> {
-        dbg!(&self);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("fetching user failed: {}", self),
@@ -36,15 +45,23 @@ impl IntoResponse for GetUserError {
 pub async fn get_user(
     cookies: CookieJar,
     State(state): State<Context>,
-    payload: Result<Json<Value>, JsonRejection>
-) -> Result<Json<GetUser>, GetUserError> {
+    payload: Result<Json<Value>, JsonRejection>,
+) -> impl IntoResponse {
     let Some(access_token) = cookies.get("access_token") else {
-        return Err(GetUserError::ContextError(ContextError::AuthError(AuthError::MissingAuthenticationCookie)));
+        return Err(GetUserError::ContextError(ContextError::AuthError(
+            AuthError::MissingAuthenticationCookie,
+        )));
     };
 
     let user_data = state.load_cognito_user(access_token.value()).await?;
 
     Ok(Json::from(GetUser {
-        user: format!("{user_data:?}"),
+        username: user_data.username().to_owned(),
+        user_attributes: HashMap::from_iter(
+            user_data
+                .user_attributes()
+                .iter()
+                .map(|att| (att.name().to_owned(), att.value().map(str::to_owned))),
+        ),
     }))
 }

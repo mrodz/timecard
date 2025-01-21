@@ -1,8 +1,8 @@
 use axum::{extract::Query, http::{HeaderMap, HeaderValue, StatusCode}, response::IntoResponse, Json};
-use axum_extra::headers::Authorization;
+use axum_extra::{extract::CookieJar, headers::Authorization};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tower_cookies::{Cookie, Cookies};
+use tower_cookies::{cookie::SameSite, Cookie, Cookies};
 
 #[derive(Deserialize)]
 pub struct RedirectParams {
@@ -20,7 +20,7 @@ pub struct AwsCognitoRedirect {
 
 pub async fn aws_cognito_redirect(
     Query(params): Query<RedirectParams>,
-    cookies: Cookies,
+    cookies: CookieJar,
 ) -> impl IntoResponse {
     let code = if let Some(code) = params.code {
         code
@@ -45,11 +45,13 @@ pub async fn aws_cognito_redirect(
             if res.status().is_success() {
                 let tokens: AwsCognitoRedirect = res.json().await.unwrap();
 
-                dbg!(&tokens);
+                let mut ready_cookie = Cookie::new("access_token", tokens.access_token.clone());
 
-				cookies.add(Cookie::new("access_token", tokens.access_token.clone()));
+                ready_cookie.set_same_site(SameSite::None);
+                ready_cookie.set_domain("localhost");
+                ready_cookie.set_path("/");
 
-                (StatusCode::OK, Json::from(tokens)).into_response()
+                (StatusCode::OK, cookies.add(ready_cookie), Json::from(tokens)).into_response()
             } else {
 				eprintln!("{:?}", res.text().await);
                 (StatusCode::BAD_REQUEST, "Failed to exchange code for token").into_response()

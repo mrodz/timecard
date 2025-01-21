@@ -5,16 +5,22 @@ mod routes;
 
 use anyhow::{anyhow, Context as AnyhowContext, Result};
 use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
-use axum::{error_handling::HandleErrorLayer, http::{Method, StatusCode, Uri}, routing::get, BoxError, Json, Router};
+use axum::{
+    error_handling::HandleErrorLayer,
+    http::{Method, StatusCode, Uri},
+    routing::get,
+    BoxError, Json, Router,
+};
+use axum_extra::headers::ContentType;
 use context::Context;
 use dotenv::dotenv;
 use sea_orm::{Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
-use tokio::time::error::Elapsed;
-use tower_cookies::CookieManagerLayer;
 use std::{collections::HashMap, net::SocketAddr, time::Duration};
+use tokio::time::error::Elapsed;
 use tower::ServiceBuilder;
-use tower_http::cors::{Any, CorsLayer};
+use tower_cookies::CookieManagerLayer;
+use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 
 #[tokio::main]
@@ -28,24 +34,36 @@ async fn main() -> Result<()> {
 
     println!("{:?}", std::env::var("AWS_PROFILE"));
 
-    let context = Context::new(sdk_config, None::<&str>, "postgres://postgres:postgres@localhost:3588/postgres").await?;
+    let context = Context::new(
+        sdk_config,
+        None::<&str>,
+        "postgres://postgres:postgres@localhost:3588/postgres",
+    )
+    .await?;
 
     context.test_database_connection().await?;
-    
-    let cors_origins = ["http://localhost:5173".parse().unwrap()];
 
-    let cors = CorsLayer::new().allow_origin(cors_origins).allow_credentials(true).allow_methods([Method::GET, Method::HEAD, Method::PUT, Method::PATCH, Method::POST, Method::DELETE]);
+    // let cors_origins = ["http://localhost:5173".parse().unwrap(), "http://localhost:4000".parse().unwrap()];
+
+    // let cors = CorsLayer::new().allow_origin(cors_origins).allow_credentials(true).allow_methods([Method::GET, Method::HEAD, Method::PUT, Method::PATCH, Method::POST, Method::DELETE]).allow_headers(ContentType, "*");
+    // let cors = CorsLayer::very_permissive();
+    let cors = CorsLayer::new()
+        .allow_headers(AllowHeaders::mirror_request())
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_credentials(true)
+        .allow_origin(["http://localhost:5173".parse().unwrap()]);
     let cookies = CookieManagerLayer::new();
     let timeout = TimeoutLayer::new(Duration::from_secs(10));
 
     let app = Router::new()
         .route("/", get(root))
         .route("/user", get(routes::user::get_user))
-        .route("/auth/redirect", get(routes::cognito::aws_cognito_redirect))
-        .layer(ServiceBuilder::new()
-            .layer(cors)
-            .layer(timeout)
-            .layer(cookies)
+        .route("/redirect", get(routes::cognito::aws_cognito_redirect))
+        .layer(
+            ServiceBuilder::new()
+                .layer(cors)
+                .layer(timeout)
+                .layer(cookies),
         )
         .with_state(context);
 
