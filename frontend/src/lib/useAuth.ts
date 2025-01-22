@@ -1,5 +1,5 @@
 import { CognitoAccessToken, CognitoIdToken, CognitoRefreshToken, CognitoUser, CognitoUserAttribute, CognitoUserPool, CognitoUserSession, ICognitoUserPoolData } from "amazon-cognito-identity-js";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 const POOL_DATA = {
 	UserPoolId: import.meta.env.VITE_USER_POOL_ID,
@@ -24,8 +24,37 @@ export default function useHandler() {
 		cognitoUser.setSignInUserSession(userSession)
 	}, [])
 
+	const getCurrentUser = useCallback(async () => {
+		const maybeUser = userPool.getCurrentUser()
+
+		if (maybeUser === null) return null;
+
+		return new Promise((resolve, reject) => {
+			maybeUser.getSession((err: Error | null, ok: CognitoUserSession | null) => {
+				if (!err) {
+					if (ok?.isValid()) {
+						return resolve(maybeUser);
+					}
+
+					const originalSession = maybeUser.getSignInUserSession();
+
+					if (originalSession === null) {
+						return reject("original session is null")
+					}
+
+					maybeUser.refreshSession(originalSession.getRefreshToken(), (err, ok) => {
+						if (!!err) reject(err);
+						resolve(ok)
+					})
+				} else {
+					reject(err)
+				}
+			});
+		})
+	}, [])
+
 	return {
-		userPool,
 		beginUserSession,
+		getCurrentUser,
 	};
 }

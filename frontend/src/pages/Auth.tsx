@@ -52,7 +52,7 @@ type UserLoadedProps = {
 }
 
 function UserLoaded(props: UserLoadedProps) {
-	const { beginUserSession, userPool } = useAuth()
+	const { beginUserSession, getCurrentUser } = useAuth()
 	const navigate = useNavigate()
 
 	const user: UserServerResponse | null = use(props.user)
@@ -61,24 +61,22 @@ function UserLoaded(props: UserLoadedProps) {
 
 	useEffect(() => {
 		const timeout = setTimeout(() => {
-			navigate('/dashboard');
+			navigate('/app/dashboard');
 		}, 4_000);
 
 		return () => clearTimeout(timeout);
 	}, [])
 
-	const cognitoUser = userPool.getCurrentUser();
-
 	return (
 		<Card>
 			<CardHeader>
-				Hi, {cognitoUser?.getUsername() ?? "friend"} 🎉
+				Hi 🎉
 			</CardHeader>
 			<CardContent>
 				<p>
 					You are now authenticated. You will be redirected shortly. If not, you may click this button and redirect yourself!
 				</p>
-				<Link className={buttonVariants({ variant: 'outline' })} to="/dashboard">Go to dashboard</Link>
+				<Link className={buttonVariants({ variant: 'outline' })} to="/app/dashboard">Go to dashboard</Link>
 			</CardContent>
 		</Card>
 	)

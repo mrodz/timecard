@@ -1,8 +1,10 @@
-use axum::{extract::Query, http::{HeaderMap, HeaderValue, StatusCode}, response::IntoResponse, Json};
+use axum::{extract::{Query, State}, http::{HeaderMap, HeaderValue, StatusCode}, response::IntoResponse, Json};
 use axum_extra::{extract::CookieJar, headers::Authorization};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tower_cookies::{cookie::SameSite, Cookie, Cookies};
+
+use crate::context::Context;
 
 #[derive(Deserialize)]
 pub struct RedirectParams {
@@ -45,13 +47,21 @@ pub async fn aws_cognito_redirect(
             if res.status().is_success() {
                 let tokens: AwsCognitoRedirect = res.json().await.unwrap();
 
-                let mut ready_cookie = Cookie::new("access_token", tokens.access_token.clone());
+                let mut access_token_cookie = Cookie::new("access_token", tokens.access_token.clone());
 
-                ready_cookie.set_same_site(SameSite::None);
-                ready_cookie.set_domain("localhost");
-                ready_cookie.set_path("/");
+                access_token_cookie.set_same_site(SameSite::None);
+                access_token_cookie.set_domain("localhost");
+                access_token_cookie.set_path("/");
 
-                (StatusCode::OK, cookies.add(ready_cookie), Json::from(tokens)).into_response()
+                let mut refresh_token_cookie = Cookie::new("refresh_token", tokens.refresh_token.clone());
+
+                refresh_token_cookie.set_same_site(SameSite::Strict);
+                refresh_token_cookie.set_domain("localhost");
+                refresh_token_cookie.set_path("refresh");
+                refresh_token_cookie.set_http_only(true);
+                refresh_token_cookie.set_secure(true);
+
+                (StatusCode::OK, cookies.add(access_token_cookie).add(refresh_token_cookie), Json::from(tokens)).into_response()
             } else {
 				eprintln!("{:?}", res.text().await);
                 (StatusCode::BAD_REQUEST, "Failed to exchange code for token").into_response()
