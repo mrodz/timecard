@@ -4,19 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-migration = { path = "migration" }
-entity = { path = "entity" }
-
 anyhow = "1.0.95"
 aws-config = "1.5.14"
 aws-sdk-secretsmanager = "1.58.0"
 aws-smithy-runtime-api = "1.7.3"
 axum = { version = "0.8.1", features = ["macros"] }
-sea-orm = { version = "1.1.1", features = [
-	"sqlx-postgres",
-	"runtime-tokio-rustls",
-	"macros",
-] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.135"
 thiserror = { version = "2.0.11" }
@@ -30,3 +22,4 @@ futures = "0.3.31"
 axum-extra = { version = "0.10.0", features = ["cookie", "typed-header"] }
 reqwest = { version = "0.12.12", features = ["json"] }
 dotenv = "0.15.0"
+aws-sdk-dynamodb = "1.61.0"

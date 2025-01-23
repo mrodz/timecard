@@ -1,10 +1,7 @@
-use axum::{extract::{Query, State}, http::{HeaderMap, HeaderValue, StatusCode}, response::IntoResponse, Json};
-use axum_extra::{extract::CookieJar, headers::Authorization};
+use axum::{extract::Query, http::StatusCode, response::IntoResponse, Json};
+use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tower_cookies::{cookie::SameSite, Cookie, Cookies};
-
-use crate::context::Context;
+use tower_cookies::{cookie::SameSite, Cookie};
 
 #[derive(Deserialize)]
 pub struct RedirectParams {
@@ -13,11 +10,11 @@ pub struct RedirectParams {
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct AwsCognitoRedirect {
-	access_token: String,
-	expires_in: i64,
-	id_token: String,
-	refresh_token: String,
-	token_type: String,
+    access_token: String,
+    expires_in: i64,
+    id_token: String,
+    refresh_token: String,
+    token_type: String,
 }
 
 pub async fn aws_cognito_redirect(
@@ -35,7 +32,10 @@ pub async fn aws_cognito_redirect(
     let params = [
         ("grant_type", "authorization_code"),
         ("client_id", &std::env::var("COGNITO_CLIENT_ID").unwrap()),
-		("client_secret", &std::env::var("COGNITO_CLIENT_SECRET").unwrap()),
+        (
+            "client_secret",
+            &std::env::var("COGNITO_CLIENT_SECRET").unwrap(),
+        ),
         ("code", &code),
         ("redirect_uri", "http://localhost:5173/auth/"),
     ];
@@ -47,13 +47,15 @@ pub async fn aws_cognito_redirect(
             if res.status().is_success() {
                 let tokens: AwsCognitoRedirect = res.json().await.unwrap();
 
-                let mut access_token_cookie = Cookie::new("access_token", tokens.access_token.clone());
+                let mut access_token_cookie =
+                    Cookie::new("access_token", tokens.access_token.clone());
 
                 access_token_cookie.set_same_site(SameSite::None);
                 access_token_cookie.set_domain("localhost");
                 access_token_cookie.set_path("/");
 
-                let mut refresh_token_cookie = Cookie::new("refresh_token", tokens.refresh_token.clone());
+                let mut refresh_token_cookie =
+                    Cookie::new("refresh_token", tokens.refresh_token.clone());
 
                 refresh_token_cookie.set_same_site(SameSite::Strict);
                 refresh_token_cookie.set_domain("localhost");
@@ -61,9 +63,14 @@ pub async fn aws_cognito_redirect(
                 refresh_token_cookie.set_http_only(true);
                 refresh_token_cookie.set_secure(true);
 
-                (StatusCode::OK, cookies.add(access_token_cookie).add(refresh_token_cookie), Json::from(tokens)).into_response()
+                (
+                    StatusCode::OK,
+                    cookies.add(access_token_cookie).add(refresh_token_cookie),
+                    Json::from(tokens),
+                )
+                    .into_response()
             } else {
-				eprintln!("{:?}", res.text().await);
+                eprintln!("{:?}", res.text().await);
                 (StatusCode::BAD_REQUEST, "Failed to exchange code for token").into_response()
             }
         }

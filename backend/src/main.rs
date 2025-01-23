@@ -3,24 +3,14 @@ extern crate dotenv;
 mod context;
 mod routes;
 
-use anyhow::{anyhow, Context as AnyhowContext, Result};
-use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, Region};
-use axum::{
-    error_handling::HandleErrorLayer,
-    http::{Method, StatusCode, Uri},
-    routing::get,
-    BoxError, Json, Router,
-};
-use axum_extra::headers::ContentType;
+use anyhow::{Context as AnyhowContext, Result};
+use aws_config::{meta::region::RegionProviderChain, Region};
+use axum::{routing::get, Router};
 use context::Context;
-use dotenv::dotenv;
-use sea_orm::{Database, DatabaseConnection};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, net::SocketAddr, time::Duration};
-use tokio::time::error::Elapsed;
+use std::{net::SocketAddr, time::Duration};
 use tower::ServiceBuilder;
 use tower_cookies::CookieManagerLayer;
-use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 
 #[tokio::main]
@@ -40,8 +30,6 @@ async fn main() -> Result<()> {
         "postgres://postgres:postgres@localhost:3588/postgres",
     )
     .await?;
-
-    context.test_database_connection().await?;
 
     // let cors_origins = ["http://localhost:5173".parse().unwrap(), "http://localhost:4000".parse().unwrap()];
 

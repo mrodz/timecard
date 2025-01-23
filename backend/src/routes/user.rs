@@ -6,15 +6,11 @@ use axum::{
     extract::{rejection::JsonRejection, State},
     http::{Response, StatusCode},
     response::IntoResponse,
-    Extension, Json,
+    Json,
 };
-use axum_extra::{
-    extract::CookieJar,
-    headers::{authorization::Bearer, Authorization},
-    TypedHeader,
-};
+use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::context::{AuthError, Context, ContextError};

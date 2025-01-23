@@ -6,6 +6,7 @@ import useAuth from "@/lib/useAuth"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import useAttributes from "@/lib/useAttributes";
+import { ProtectedRouteLoadingScreenReject, ProtectedRouteLoadingScreenSuccess } from "./Layout";
 
 type AuthServerResponse = {
 	"access_token": string,
@@ -52,7 +53,7 @@ type UserLoadedProps = {
 }
 
 function UserLoaded(props: UserLoadedProps) {
-	const { beginUserSession, getCurrentUser } = useAuth()
+	const { beginUserSession } = useAuth()
 	const navigate = useNavigate()
 
 	const user: UserServerResponse | null = use(props.user)
@@ -60,11 +61,7 @@ function UserLoaded(props: UserLoadedProps) {
 	beginUserSession(user!.username, props.auth.access_token, props.auth.id_token, props.auth.refresh_token)
 
 	useEffect(() => {
-		const timeout = setTimeout(() => {
-			navigate('/app/dashboard');
-		}, 4_000);
-
-		return () => clearTimeout(timeout);
+		navigate('/dashboard');
 	}, [])
 
 	return (
@@ -76,7 +73,7 @@ function UserLoaded(props: UserLoadedProps) {
 				<p>
 					You are now authenticated. You will be redirected shortly. If not, you may click this button and redirect yourself!
 				</p>
-				<Link className={buttonVariants({ variant: 'outline' })} to="/app/dashboard">Go to dashboard</Link>
+				<Link className={buttonVariants({ variant: 'outline' })} to="/dashboard">Go to dashboard</Link>
 			</CardContent>
 		</Card>
 	)
@@ -106,8 +103,7 @@ function AuthLoaded(props: AuthLoadedProps) {
 
 	return (
 		<div>
-			{JSON.stringify(response)}
-			<Suspense fallback={<b>Loading user...</b>}>
+			<Suspense fallback={<ProtectedRouteLoadingScreenSuccess message="Loading User" />}>
 				<UserLoaded auth={response!} user={fetchUser()} />
 			</Suspense>
 		</div>
@@ -139,11 +135,11 @@ export default function Auth() {
 		code !== null
 			? <>
 				<AuthErrorBoundary>
-					<Suspense fallback={<b>Loading...</b>}>
+					<Suspense fallback={<ProtectedRouteLoadingScreenSuccess message="Creating User" />}>
 						<AuthLoaded auth={fetchToken(code)} />
 					</Suspense>
 				</AuthErrorBoundary>
 			</>
-			: <b>missing code</b>
+			: <ProtectedRouteLoadingScreenReject message="Request is missing code, please try logging in again" />
 	)
 }

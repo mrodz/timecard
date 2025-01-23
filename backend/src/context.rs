@@ -4,6 +4,7 @@ use aws_sdk_cognitoidentityprovider::{
 };
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use aws_sdk_secretsmanager::Client as AwsSecretsClient;
+use aws_sdk_dynamodb::Client as AwsDynamoDbClient;
 use aws_smithy_runtime_api::{client::result::SdkError, http::Response};
 use axum::{body::Body, http::StatusCode, response::IntoResponse};
 use tokio::sync::RwLock;
@@ -11,10 +12,6 @@ use tokio::sync::RwLock;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use migration::{Migrator, MigratorTrait};
-pub use sea_orm::DbErr;
-use sea_orm::{Database, DatabaseConnection};
 
 use serde::{Deserialize, Serialize};
 
@@ -55,8 +52,6 @@ pub enum AuthError {
 pub enum ContextError {
     #[error("could not load credentials for database: {0}")]
     RDSCredentialsInitialization(#[from] RDSCredentialsError),
-    #[error("error from database: {0}")]
-    Database(#[from] DbErr),
     #[error("database connection string is missing a password, and no secret key was found")]
     MissingPassword,
     #[error("database schema should be `postgres`, found `{0}`")]
@@ -70,7 +65,7 @@ pub enum ContextError {
 #[derive(Clone, Debug)]
 pub struct Context {
     aws_sdk_config: Arc<RwLock<SdkConfig>>,
-    database_connection: Arc<RwLock<DatabaseConnection>>,
+    aws_dynamodb: Arc<RwLock<AwsDynamoDbClient>>,
     aws_secrets: Option<Arc<RwLock<AwsSecretsClient>>>,
     aws_cognito: Arc<RwLock<AwsCognitoClient>>,
 }
@@ -143,16 +138,14 @@ impl Context {
             aws_secrets = Some(Arc::new(RwLock::new(secrets_client)));
         }
 
-        let db = Database::connect(rds_location).await?;
-
-        migration::Migrator::up(&db, None).await?;
-
         let cognito_client = AwsCognitoClient::new(&sdk_config);
+
+        let dynamodb_client = AwsDynamoDbClient::new(&sdk_config);
 
         Ok(Self {
             aws_sdk_config: Arc::new(RwLock::new(sdk_config)),
-            database_connection: Arc::new(RwLock::new(db)),
             aws_cognito: Arc::new(RwLock::new(cognito_client)),
+            aws_dynamodb: Arc::new(RwLock::new(dynamodb_client)),
             aws_secrets,
         })
     }
@@ -170,31 +163,6 @@ impl Context {
         Ok(output)
     }
 
-    /// # Example usage
-    /// ```no_run
-    ///self.database_connection(|database_connection| {
-    ///  Box::pin(async move {
-    ///    Migrator::up(database_connection, None).await?;
-    ///    Ok::<_, ContextError>(())
-    ///   })
-    /// })
-    /// .await?;
-    /// ```
-    pub async fn database_connection<F, T, E>(&self, callback: F) -> Result<T, ContextError>
-    where
-        F: for<'c> FnOnce(
-                &'c DatabaseConnection,
-            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
-            + Send,
-        T: Send,
-        E: Send,
-        ContextError: From<E>,
-    {
-        let lock = self.database_connection.read().await;
-        let output = callback(&lock).await?;
-        Ok(output)
-    }
-
     pub async fn aws_cognito_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
     where
         F: for<'c> FnOnce(
@@ -206,6 +174,21 @@ impl Context {
         ContextError: From<E>,
     {
         let lock = self.aws_cognito.read().await;
+        let output = callback(&lock).await?;
+        Ok(output)
+    }
+
+    pub async fn aws_dynamodb_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
+    where
+        F: for<'c> FnOnce(
+                &'c AwsDynamoDbClient,
+            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
+            + Send,
+        T: Send,
+        E: Send,
+        ContextError: From<E>,
+    {
+        let lock = self.aws_dynamodb.read().await;
         let output = callback(&lock).await?;
         Ok(output)
     }
@@ -237,16 +220,5 @@ impl Context {
             .map_err(AuthError::from)?;
 
 		Ok(get_user_output)
-    }
-
-    pub async fn migrate(&self) -> Result<(), ContextError> {
-        let lock = self.database_connection.read().await;
-        Migrator::up(&*lock, None).await?;
-        Ok(())
-    }
-
-    pub async fn test_database_connection(&self) -> Result<(), ContextError> {
-        self.database_connection.read().await.ping().await?;
-        Ok(())
     }
 }
