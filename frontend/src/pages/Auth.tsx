@@ -1,12 +1,12 @@
-import { Component, Suspense, use, useCallback, useEffect } from "react"
+import { Suspense, use, useCallback, useEffect } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
-import useAuth from "@/lib/useAuth"
+import useAuth, { InvalidCodeRedirectError } from "@/lib/useAuth"
 
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import useAttributes from "@/lib/useAttributes";
 import { ProtectedRouteLoadingScreenReject, ProtectedRouteLoadingScreenSuccess } from "./Layout";
+import AuthErrorBoundary from "@/components/AuthErrorBoundary";
 
 type AuthServerResponse = {
 	"access_token": string,
@@ -18,28 +18,6 @@ type AuthServerResponse = {
 
 type AuthLoadedProps = {
 	auth: Promise<AuthServerResponse | null>,
-}
-
-class AuthErrorBoundary extends Component<{ children: any }> {
-	state = { hasError: false }
-
-	constructor(props: { children: any }) {
-		super(props)
-		this.state = { hasError: false };
-	}
-
-	static getDerivedStateFromError(_error: any) {
-		return { hasError: true };
-	}
-
-	render() {
-		if (this.state.hasError) {
-			return <div>
-				Please sign in again, this auth flow has expired
-			</div>
-		}
-		return this.props.children;
-	}
 }
 
 type UserServerResponse = {
@@ -95,6 +73,7 @@ function AuthLoaded(props: AuthLoadedProps) {
 			console.error(result)
 		} catch (e) {
 			console.log(e)
+			throw e
 		}
 
 		return null;
@@ -121,12 +100,13 @@ export default function Auth() {
 			if (result.ok) {
 				const object = await result.json()
 				return object
+			} else {
+				throw new InvalidCodeRedirectError()
 			}
-			console.error(result)
 		} catch (e) {
 			console.error(e)
+			throw e
 		}
-		return null;
 	}, [])
 
 	const code = searchParams.get("code");

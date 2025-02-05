@@ -1,6 +1,6 @@
-import { Component, createContext, Suspense, use, useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, Suspense, use, useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
-import useAuth from "@/lib/useAuth"
+import useAuth, { getAuthUrl } from "@/lib/useAuth"
 import AppHeader from '@/components/AppHeader';
 import { Spinner } from '@/components/ui/spinner';
 import { CognitoUser, CognitoUserAttribute } from 'amazon-cognito-identity-js';
@@ -77,18 +77,13 @@ function LayoutLoaded(props: DashboardLoadedProps) {
 
 		// not signed in
 		if (reactiveUser === null) {
-			const params = new URLSearchParams()
-			params.set('client_id', import.meta.env.VITE_COGNITO_CLIENT_ID)
-			params.set('response_type', 'code')
-			params.set('redirect_uri', 'http://localhost:5173/auth/')
-
 			if (notSignedInActionLogin.current) {
-				const urlCopy = `https://auth.timecard.pro/login?${params.toString()}&scope=aws.cognito.signin.user.admin+email+openid+phone`
+				const urlCopy = getAuthUrl();
 				setWillRedirect(urlCopy)
 
 				timeout = setTimeout(() => {
 					window.location.href = urlCopy
-				}, 7_000)
+				}, 4_000)
 			}
 		} else {
 			reactiveUser.getUserAttributes((err: Error | undefined, ok: CognitoUserAttribute[] | undefined) => {
@@ -112,7 +107,7 @@ function LayoutLoaded(props: DashboardLoadedProps) {
 
 	return (
 		user === null
-			? <ProtectedRouteLoadingScreenReject message="You aren't signed in and can't access this resource" willRedirect={willRedirect} delay={7} />
+			? <ProtectedRouteLoadingScreenReject message="You aren't signed in and can't access this resource" willRedirect={willRedirect} delay={4} />
 			: (
 				<CurrentUserContext.Provider value={{ reactiveUser, attributes, signOut }}>
 					<div className='w-full flex flex-col'>

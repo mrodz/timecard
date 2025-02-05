@@ -8,6 +8,31 @@ const POOL_DATA = {
 
 const userPool = new CognitoUserPool(POOL_DATA)
 
+export class InvalidCodeRedirectError extends Error {
+	name: string = "InvalidCodeRedirectError";
+	constructor() {
+		super("The provided code is no longer valid")
+	}
+}
+
+export function getAuthUrl(options?: { cognitoClientId?: string, redirectUri?: string }): string {
+	const params = new URLSearchParams()
+	params.set('client_id', options?.cognitoClientId ?? import.meta.env.VITE_COGNITO_CLIENT_ID!)
+	params.set('response_type', 'code')
+	params.set('redirect_uri', options?.redirectUri ?? 'http://localhost:5173/auth/')
+
+	return `https://auth.timecard.pro/login?${params.toString()}&scope=aws.cognito.signin.user.admin+email+openid+phone`
+}
+
+export function getAuthLogoutUrl(options?: { cognitoClientId?: string, logoutUri?: string }): string {
+	const params = new URLSearchParams();
+
+	params.set('client_id', options?.cognitoClientId ?? import.meta.env.VITE_COGNITO_CLIENT_ID);
+	params.set('logout_uri', options?.logoutUri ?? 'http://localhost:5173/');
+
+	return `https://auth.timecard.pro/logout?${params.toString()}`;
+}
+
 export default function useHandler() {
 	const beginUserSession = useCallback((username: string, accessToken: string, idToken: string, refreshToken: string) => {
 		const userSession = new CognitoUserSession({

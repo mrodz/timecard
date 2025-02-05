@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { CurrentUserContext } from '@/pages/Layout'
 import { Spinner } from '@/components/ui/spinner'
+import { getAuthLogoutUrl } from '@/lib/useAuth'
 
 function UserProfile() {
 	const userState = useContext(CurrentUserContext)
@@ -30,11 +31,7 @@ export function SignOutButton() {
 		setSigningOut(true);
 		await userState?.signOut?.()
 
-		const params = new URLSearchParams();
-		params.set('client_id', import.meta.env.VITE_COGNITO_CLIENT_ID);
-		params.set('logout_uri', 'http://localhost:5173/');
-
-		window.location.href = `https://auth.timecard.pro/logout?${params.toString()}`;
+		window.location.href = getAuthLogoutUrl();
 	}
 
 	return (
