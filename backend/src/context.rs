@@ -46,6 +46,8 @@ pub enum AuthError {
     AwsGetUser(#[from] SdkError<GetUserError, Response>),
 	#[error("missing authentication cookie")]
 	MissingAuthenticationCookie,
+    #[error("cannot access this resource")]
+    Unauthorized,
 }
 
 #[derive(Error, Debug)]

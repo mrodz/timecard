@@ -47,6 +47,7 @@ async fn main() -> Result<()> {
         .route("/", get(root))
         .route("/user", get(routes::user::get_user))
         .route("/redirect", get(routes::cognito::aws_cognito_redirect))
+        .route("/clocks/{user_id}", get(routes::clocks::get_clocks))
         .layer(
             ServiceBuilder::new()
                 .layer(cors)
