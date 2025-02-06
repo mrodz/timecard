@@ -1,12 +1,17 @@
+pub mod clocks;
+
 use aws_config::SdkConfig;
-use aws_sdk_cognitoidentityprovider::{
-    operation::get_user::{GetUserError, GetUserOutput}, Client as AwsCognitoClient,
-};
+use aws_sdk_cognitoidentityprovider::operation::get_user::{GetUserError, GetUserOutput};
+use aws_sdk_dynamodb::operation::query::QueryError;
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
-use aws_sdk_secretsmanager::Client as AwsSecretsClient;
-use aws_sdk_dynamodb::Client as AwsDynamoDbClient;
 use aws_smithy_runtime_api::{client::result::SdkError, http::Response};
+
+pub(crate) use aws_sdk_cognitoidentityprovider::Client as AwsCognitoClient;
+pub(crate) use aws_sdk_dynamodb::Client as AwsDynamoDbClient;
+pub(crate) use aws_sdk_secretsmanager::Client as AwsSecretsClient;
+
 use axum::{body::Body, http::StatusCode, response::IntoResponse};
+use clocks::{ClockClientDependency, ClockError};
 use tokio::sync::RwLock;
 
 use std::future::Future;
@@ -17,7 +22,6 @@ use serde::{Deserialize, Serialize};
 
 use thiserror::Error;
 use url::Url;
-
 
 // Tell axum how to convert `AppError` into a response.
 impl IntoResponse for ContextError {
@@ -44,8 +48,8 @@ pub enum RDSCredentialsError {
 pub enum AuthError {
     #[error("error with cognito interface: {0}")]
     AwsGetUser(#[from] SdkError<GetUserError, Response>),
-	#[error("missing authentication cookie")]
-	MissingAuthenticationCookie,
+    #[error("missing authentication cookie")]
+    MissingAuthenticationCookie,
     #[error("cannot access this resource")]
     Unauthorized,
 }
@@ -62,14 +66,16 @@ pub enum ContextError {
     UrlParse(#[from] url::ParseError),
     #[error("could not authenticate: {0}")]
     AuthError(#[from] AuthError),
+    #[error("error in clock interface: {0}")]
+    ClockError(#[from] ClockError),
 }
 
 #[derive(Clone, Debug)]
 pub struct Context {
     aws_sdk_config: Arc<RwLock<SdkConfig>>,
     aws_dynamodb: Arc<RwLock<AwsDynamoDbClient>>,
-    aws_secrets: Option<Arc<RwLock<AwsSecretsClient>>>,
     aws_cognito: Arc<RwLock<AwsCognitoClient>>,
+    clocks_client: Arc<dyn ClockClientDependency>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -101,54 +107,18 @@ impl RDSCredentials {
 }
 
 impl Context {
-    pub async fn new<S, U>(
-        sdk_config: SdkConfig,
-        rds_secret_id: Option<S>,
-        rds_location: U,
-    ) -> Result<Self, ContextError>
-    where
-        S: Into<String>,
-        U: TryInto<Url>,
-        ContextError: From<<U as TryInto<Url>>::Error>,
-    {
-        let mut rds_location = rds_location.try_into()?;
-
-        let scheme = rds_location.scheme();
-
-        if scheme != "postgres" {
-            return Err(ContextError::BadSchema(scheme.to_owned()));
-        }
-
-        let mut aws_secrets = None;
-
-        if rds_location.password().is_none() || rds_location.username().is_empty() {
-            let Some(rds_secret_id) = rds_secret_id else {
-                return Err(ContextError::MissingPassword);
-            };
-
-            let secrets_client = AwsSecretsClient::new(&sdk_config);
-
-            let database_credentials = RDSCredentials::new(&secrets_client, rds_secret_id).await?;
-
-            rds_location
-                .set_password(Some(&database_credentials.password))
-                .expect("postgres schema accepts password");
-            rds_location
-                .set_username(&database_credentials.username)
-                .expect("postgres schema accepts username");
-
-            aws_secrets = Some(Arc::new(RwLock::new(secrets_client)));
-        }
-
+    pub async fn new(sdk_config: SdkConfig) -> Result<Self, ContextError> {
         let cognito_client = AwsCognitoClient::new(&sdk_config);
 
-        let dynamodb_client = AwsDynamoDbClient::new(&sdk_config);
+        let aws_dynamodb = Arc::new(RwLock::new(AwsDynamoDbClient::new(&sdk_config)));
+
+        let clocks_client = clocks::v1::ClockClient::new(Arc::downgrade(&aws_dynamodb));
 
         Ok(Self {
             aws_sdk_config: Arc::new(RwLock::new(sdk_config)),
             aws_cognito: Arc::new(RwLock::new(cognito_client)),
-            aws_dynamodb: Arc::new(RwLock::new(dynamodb_client)),
-            aws_secrets,
+            aws_dynamodb,
+            clocks_client: Arc::new(clocks_client),
         })
     }
 
@@ -195,23 +165,10 @@ impl Context {
         Ok(output)
     }
 
-    pub async fn aws_secrets_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
-    where
-        F: for<'c> FnOnce(
-                Option<&'c AwsSecretsClient>,
-            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
-            + Send,
-        T: Send,
-        E: Send,
-        ContextError: From<E>,
-    {
-        let lock =
-            futures::future::OptionFuture::from(self.aws_secrets.as_ref().map(|c| c.read())).await;
-        let output = callback(lock.as_deref()).await?;
-        Ok(output)
-    }
-
-    pub async fn load_cognito_user(&self, access_token: &str) -> Result<GetUserOutput, ContextError> {
+    pub async fn load_cognito_user(
+        &self,
+        access_token: &str,
+    ) -> Result<GetUserOutput, ContextError> {
         let client_lock = self.aws_cognito.read().await;
 
         let get_user_output = client_lock
@@ -221,6 +178,10 @@ impl Context {
             .await
             .map_err(AuthError::from)?;
 
-		Ok(get_user_output)
+        Ok(get_user_output)
+    }
+
+    pub fn clock_client(&self) -> &dyn ClockClientDependency {
+        self.clocks_client.as_ref()
     }
 }

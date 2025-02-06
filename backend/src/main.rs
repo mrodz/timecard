@@ -20,16 +20,11 @@ async fn main() -> Result<()> {
     let region_provider =
         RegionProviderChain::first_try("us-west-1").or_else(Region::from_static("us-west-1"));
 
-    let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::v2024_03_28()).await;
+    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2024_03_28()).load().await;
 
     println!("{:?}", std::env::var("AWS_PROFILE"));
 
-    let context = Context::new(
-        sdk_config,
-        None::<&str>,
-        "postgres://postgres:postgres@localhost:3588/postgres",
-    )
-    .await?;
+    let context = Context::new(sdk_config).await?;
 
     // let cors_origins = ["http://localhost:5173".parse().unwrap(), "http://localhost:4000".parse().unwrap()];
 

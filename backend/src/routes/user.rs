@@ -63,5 +63,6 @@ pub async fn get_user(cookies: CookieJar, State(state): State<Context>) -> impl 
                     .map(|att| (att.name().to_owned(), att.value().map(str::to_owned))),
             ),
         }),
-    ).into_response()
+    )
+        .into_response()
 }

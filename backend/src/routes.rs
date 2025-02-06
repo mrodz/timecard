@@ -1,3 +1,3 @@
-pub mod user;
-pub mod cognito;
 pub mod clocks;
+pub mod cognito;
+pub mod user;
