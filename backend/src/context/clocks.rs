@@ -3,8 +3,9 @@ pub mod v1;
 use std::{collections::HashMap, fmt::Debug};
 
 use async_trait::async_trait;
-use aws_sdk_dynamodb::{error::SdkError, operation::query::QueryError, types::AttributeValue};
+use aws_sdk_dynamodb::{error::SdkError, operation::{put_item::PutItemError, query::QueryError}, types::AttributeValue};
 use aws_smithy_runtime_api::http::Response;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -13,23 +14,71 @@ use uuid::Uuid;
 pub struct GetClocksInput(pub Uuid);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateClockInput {
+    pub identity_pool_user_id: Uuid,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClockSchema {
     /// Partition key
-    pub identity_pool_user_id: String,
+    pub identity_pool_user_id: Uuid,
     /// Sort key
-    pub uuid: String,
+    pub uuid: Uuid,
     pub name: String,
-    pub last_edit: String,
+    #[serde(with = "chrono::serde::ts_seconds")]
+    pub last_edit: DateTime<Utc>,
     pub active: bool,
-    pub clock_in_time: Option<String>,
+    #[serde(with = "chrono::serde::ts_seconds_option")]
+    pub clock_in_time: Option<DateTime<Utc>>,
 }
 
 #[derive(Error, Debug)]
 pub enum ClockError {
-    #[error("error with dynamodb interface: {0}")]
-    AwsDynamodb(#[from] SdkError<QueryError, Response>),
+    #[error("error with dynamodb QUERY interface: {0}")]
+    AwsDynamodbQuery(#[from] SdkError<QueryError, Response>),
+    #[error("error with dynamodb PUT interface: {0}")]
+    AwsDynamodbPut(#[from] SdkError<PutItemError, Response>),
     #[error("could not parse field `{0}`, `ClockSchema` from unstructured object: {1:?}")]
     ParseMalformedQuery(String, HashMap<String, AttributeValue>),
+    #[error("could not parse clock date string: {0}")]
+    ParseTimestamp(#[from] chrono::ParseError),
+    #[error("could not parse clock uuid: {0}")]
+    ParseUuid(#[from] uuid::Error),
+}
+
+impl From<CreateClockInput> for ClockSchema {
+    fn from(value: CreateClockInput) -> Self {
+        Self {
+            active: false,
+            clock_in_time: None,
+            last_edit: Utc::now(),
+            uuid: Uuid::new_v4(),
+            identity_pool_user_id: value.identity_pool_user_id,
+            name: value.name,
+        }
+    }
+}
+
+impl From<ClockSchema> for HashMap<String, AttributeValue> {
+    fn from(value: ClockSchema) -> Self {
+        let attributes = [
+            ("identity_pool_user_id".to_owned(), AttributeValue::S(value.identity_pool_user_id.to_string())),
+            ("uuid".to_owned(), AttributeValue::S(value.uuid.to_string())),
+            ("name".to_owned(), AttributeValue::S(value.name)),
+            ("last_edit".to_owned(), AttributeValue::S(value.last_edit.to_rfc3339())),
+            ("active".to_owned(), AttributeValue::Bool(value.active)),
+            ("clock_in_time".to_owned(), match value.clock_in_time {
+                None => AttributeValue::Null(true),
+                Some(date) => AttributeValue::S(date.to_rfc3339()),
+            }),
+        ];
+
+        let mut result = HashMap::with_capacity(attributes.len());
+        result.extend(attributes);
+
+        result
+    }
 }
 
 impl TryFrom<HashMap<String, AttributeValue>> for ClockSchema {
@@ -41,9 +90,13 @@ impl TryFrom<HashMap<String, AttributeValue>> for ClockSchema {
             unreachable!("should have AWS managed table key: `identity_pool_user_id`");
         };
 
+        let identity_pool_user_id = Uuid::parse_str(&identity_pool_user_id)?;
+
         let Some(AttributeValue::S(uuid)) = value.remove("uuid") else {
             unreachable!("should have AWS managed table key: `uuid`");
         };
+
+        let uuid = Uuid::parse_str(&uuid)?;
 
         let Some(AttributeValue::S(name)) = value.remove("name") else {
             return Err(ClockError::ParseMalformedQuery("name".into(), value));
@@ -53,13 +106,16 @@ impl TryFrom<HashMap<String, AttributeValue>> for ClockSchema {
             return Err(ClockError::ParseMalformedQuery("last_edit".into(), value));
         };
 
+        let last_edit = DateTime::parse_from_rfc3339(&last_edit)?.to_utc();
+
         let Some(AttributeValue::Bool(active)) = value.remove("active") else {
             return Err(ClockError::ParseMalformedQuery("active".into(), value));
         };
 
         let clock_in_time = match value.remove("clock_in_time") {
-            Some(AttributeValue::S(x)) => Some(x),
             Some(AttributeValue::Null(_)) => None,
+            Some(AttributeValue::S(x)) if x.is_empty() => None,
+            Some(AttributeValue::S(x)) => Some(DateTime::parse_from_rfc3339(&x)?.to_utc()),
             _ => {
                 return Err(ClockError::ParseMalformedQuery(
                     "clock_in_time".into(),
@@ -85,4 +141,5 @@ where
     Self: Debug + Send + Sync,
 {
     async fn get_clocks(&self, input: GetClocksInput) -> Result<Vec<ClockSchema>, ClockError>;
+    async fn create_clock(&self, input: CreateClockInput) -> Result<ClockSchema, ClockError>;
 }

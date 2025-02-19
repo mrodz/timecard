@@ -1,6 +1,7 @@
 import React, { PropsWithChildren } from "react";
 import { Card, CardContent, CardDescription, CardTitle } from "./ui/card";
 import { ClockSchema } from "@/lib/api";
+import useDateFormat from "@/lib/useDateFormat";
 
 export type UserClockProps = {
 	clock: ClockSchema
@@ -48,24 +49,33 @@ class UserClockStack extends React.Component<PropsWithChildren<{}>, { hasError: 
 	}
 }
 
+(date: Date) => {
+	Intl.DateTimeFormat
+	return `${date.getDay()}`
+}
+
 const UserClock: React.FC<UserClockProps> = ({ clock }) => {
+	const { formatter } = useDateFormat();
+
 	let clockIn;
 
 	if (clock.clock_in_time !== undefined) {
-		clockIn = new Date(clock.clock_in_time)
-		if (isNaN(clockIn.valueOf())) throw new InvalidUserClockError(InvalidUserClockErrorVariant.ParseClockInDate)
+		const maybeClockIn = new Date(clock.clock_in_time);
+
+		if (isNaN(maybeClockIn.valueOf())) throw new InvalidUserClockError(InvalidUserClockErrorVariant.ParseClockInDate)
+		if (maybeClockIn.valueOf() !== 0) clockIn = maybeClockIn;
 	}
 
 	return (
 		<>
-			<CardDescription>Last Edit: {clock.last_edit}</CardDescription>
+			<CardDescription>Last Edit: {formatter.date.format(new Date(clock.last_edit))}</CardDescription>
 
 			<CardContent>
 				{clockIn === undefined ? (
 					<div>Not Clocked In</div>
 				) : (
 					<div>
-						{clockIn.toUTCString()}
+						{formatter.minute.format(clockIn)}
 					</div>
 				)}
 			</CardContent>

@@ -1,7 +1,7 @@
 use std::sync::Weak;
 
 use async_trait::async_trait;
-use aws_sdk_dynamodb::types::AttributeValue;
+use aws_sdk_dynamodb::types::{AttributeValue, ReturnValue};
 use tokio::sync::RwLock;
 
 use crate::context::ClockError;
@@ -48,6 +48,29 @@ impl ClockClientDependency for ClockClient {
             }
         }
 
-		Ok(result)
+        Ok(result)
+    }
+
+    async fn create_clock(&self, input: CreateClockInput) -> Result<ClockSchema, ClockError> {
+        let dynamodb_client_shared = self
+            .dynamodb_client
+            .upgrade()
+            .expect("dynamo_db_client dropped");
+        let dynamodb_client = dynamodb_client_shared.read().await;
+
+        let to_insert: ClockSchema = input.into();
+
+        let created_item = dynamodb_client
+            .put_item()
+            .table_name("timeclock-clocks")
+            .set_item(Some(to_insert.into()))
+            .return_values(ReturnValue::AllOld)
+            .send()
+            .await?;
+
+        Ok(created_item
+            .attributes
+            .expect("`ReturnValue::AllOld` should have been set")
+            .try_into()?)
     }
 }
