@@ -1,7 +1,6 @@
-import { useEffect, use, memo, useMemo, useCallback } from "react";
-import { Card, CardContent, CardDescription, CardTitle } from "./ui/card";
-import { loadAllUserClocks, type ClockSchema } from "@/lib/api";
-import { CurrentUserContext } from "@/pages/Layout";
+import { use, memo } from "react";
+import { type ClockSchema } from "@/lib/api";
+import UserClock from "./UserClock";
 
 type ClockListProps = {
 	loadAllClocks: Promise<ClockSchema[]>
@@ -12,18 +11,7 @@ const ClockList = memo((props: ClockListProps) => {
 
 	return (
 		<div>
-			{clocks.map((clock, i) => (
-				<Card key={i} className="w-1/6 p-4">
-					<CardTitle>{clock.name}</CardTitle>
-					<CardDescription>{clock.uuid}</CardDescription>
-
-					<CardContent>
-						<pre className="text-wrap overflow-x-scroll">
-							{JSON.stringify(clock)}
-						</pre>
-					</CardContent>
-				</Card>
-			))}
+			{clocks.map((clock, i) => <UserClock clock={clock} key={i} />)}
 		</div>
 	)
 });
