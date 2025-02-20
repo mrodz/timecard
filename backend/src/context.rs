@@ -12,6 +12,7 @@ use axum::{body::Body, http::StatusCode, response::IntoResponse};
 use clocks::{ClockClientDependency, ClockError};
 use tokio::sync::RwLock;
 
+use std::borrow::Cow;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -47,6 +48,8 @@ pub enum ContextError {
     AuthError(#[from] AuthError),
     #[error("error in clock interface: {0}")]
     ClockError(#[from] ClockError),
+    #[error("error parsing body: {0}")]
+    HttpBody(Cow<'static, str>)
 }
 
 #[derive(Clone, Debug)]

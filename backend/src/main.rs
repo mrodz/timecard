@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
         .route("/redirect", get(routes::cognito::aws_cognito_redirect))
         .route("/clocks/{user_id}", get(routes::clocks::get_clocks))
         .route("/clocks/{user_id}", post(routes::clocks::create_clock))
+        .route("/clocks/{user_id}/edit", post(routes::clocks::edit_clock))
         .layer(
             ServiceBuilder::new()
                 .layer(cors)

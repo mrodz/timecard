@@ -4,7 +4,10 @@ import { ClockSchema } from "@/lib/api";
 import useDateFormat from "@/lib/useDateFormat";
 
 export type UserClockProps = {
-	clock: ClockSchema
+	clock: ClockSchema,
+} | {
+	skeleton: boolean,
+	name: string,
 }
 
 enum InvalidUserClockErrorVariant {
@@ -49,26 +52,34 @@ class UserClockStack extends React.Component<PropsWithChildren<{}>, { hasError: 
 	}
 }
 
-(date: Date) => {
-	Intl.DateTimeFormat
-	return `${date.getDay()}`
-}
+const UserClock: React.FC<UserClockProps> = (props) => {
+	if ("skeleton" in props) {
+		return (
+			<>
+				<CardDescription>Last Edit: Just Now</CardDescription>
 
-const UserClock: React.FC<UserClockProps> = ({ clock }) => {
-	const { formatter } = useDateFormat();
+				<CardContent>
+					Loading...
+				</CardContent>
+			</>
+		)
+	}
+
+	const { clock } = props;
+
+	const { formatter } = useDateFormat()
 
 	let clockIn;
 
-	if (clock.clock_in_time !== undefined) {
-		const maybeClockIn = new Date(clock.clock_in_time);
-
+	if (clock.clock_in_time instanceof Date) {
+		const maybeClockIn = clock.clock_in_time;
 		if (isNaN(maybeClockIn.valueOf())) throw new InvalidUserClockError(InvalidUserClockErrorVariant.ParseClockInDate)
 		if (maybeClockIn.valueOf() !== 0) clockIn = maybeClockIn;
 	}
 
 	return (
 		<>
-			<CardDescription>Last Edit: {formatter.date.format(new Date(clock.last_edit))}</CardDescription>
+			<CardDescription>Last Edit: {formatter.date.format(clock.last_edit)}</CardDescription>
 
 			<CardContent>
 				{clockIn === undefined ? (
@@ -87,7 +98,7 @@ const UserClock: React.FC<UserClockProps> = ({ clock }) => {
 export default (props: UserClockProps) => {
 	return (
 		<Card className="w-1/6 p-4">
-			<CardTitle>{props.clock.name}</CardTitle>
+			<CardTitle>{'skeleton' in props ? props.name : props.clock.name}</CardTitle>
 			<UserClockStack> { /* BEGIN FALLIBLE RENDERING */}
 				<UserClock {...props} />
 			</UserClockStack> { /* END FALLIBLE RENDERING */}

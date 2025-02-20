@@ -3,7 +3,7 @@ pub mod v1;
 use std::{collections::HashMap, fmt::Debug};
 
 use async_trait::async_trait;
-use aws_sdk_dynamodb::{error::SdkError, operation::{put_item::PutItemError, query::QueryError}, types::AttributeValue};
+use aws_sdk_dynamodb::{error::SdkError, operation::{get_item::GetItemError, put_item::PutItemError, query::QueryError, update_item::UpdateItemError}, types::AttributeValue};
 use aws_smithy_runtime_api::http::Response;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,29 @@ pub struct GetClocksInput(pub Uuid);
 pub struct CreateClockInput {
     pub identity_pool_user_id: Uuid,
     pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum EditClockInputStrategy {
+    Fields {
+        identity_pool_user_id: Uuid,
+        name: Option<String>,
+        active: Option<bool>,
+        clock_in_time: Option<Option<DateTime<Utc>>>,
+    },
+    Publish(ClockSchema),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EditClockInput {
+    pub uuid: Uuid,
+    pub update: EditClockInputStrategy,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ValidateUserClaimsToClockInput {
+    pub identity_pool_user_id: Uuid,
+    pub uuid: Uuid,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,12 +62,18 @@ pub enum ClockError {
     AwsDynamodbQuery(#[from] SdkError<QueryError, Response>),
     #[error("error with dynamodb PUT interface: {0}")]
     AwsDynamodbPut(#[from] SdkError<PutItemError, Response>),
+    #[error("error with dynamodb GET interface: {0}")]
+    AwsDynamodbGet(#[from] SdkError<GetItemError, Response>),
+    #[error("error with dynamodb UPDATE interface: {0}")]
+    AwsDynamodbUpdate(#[from] SdkError<UpdateItemError, Response>),
     #[error("could not parse field `{0}`, `ClockSchema` from unstructured object: {1:?}")]
     ParseMalformedQuery(String, HashMap<String, AttributeValue>),
     #[error("could not parse clock date string: {0}")]
     ParseTimestamp(#[from] chrono::ParseError),
     #[error("could not parse clock uuid: {0}")]
     ParseUuid(#[from] uuid::Error),
+    #[error("could not find user({0})->clock({1})")]
+    ClockNotFound(Uuid, Uuid),
 }
 
 impl From<CreateClockInput> for ClockSchema {
@@ -142,4 +171,6 @@ where
 {
     async fn get_clocks(&self, input: GetClocksInput) -> Result<Vec<ClockSchema>, ClockError>;
     async fn create_clock(&self, input: CreateClockInput) -> Result<ClockSchema, ClockError>;
+    async fn edit_clock(&self, input: EditClockInput) -> Result<Option<ClockSchema>, ClockError>;
+    async fn validate_user_claims_to_clock(&self, input: ValidateUserClaimsToClockInput) -> Result<ClockSchema, ClockError>;
 }

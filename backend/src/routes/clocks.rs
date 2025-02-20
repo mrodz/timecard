@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -5,11 +7,14 @@ use axum::{
     Json,
 };
 use axum_extra::extract::CookieJar;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::context::{
-    clocks::{CreateClockInput, GetClocksInput},
+    clocks::{
+        ClockError, ClockSchema, CreateClockInput, EditClockInput, EditClockInputStrategy,
+        GetClocksInput, ValidateUserClaimsToClockInput,
+    },
     AuthError, Context, ContextError,
 };
 
@@ -20,7 +25,7 @@ pub async fn verify_session_claim_to_uuid(
     cookies: &CookieJar,
     state: &Context,
     user_id: &Uuid,
-) -> Result<(), impl IntoResponse> {
+) -> Result<(Uuid, String), impl IntoResponse> {
     let Some(access_token) = cookies.get("access_token") else {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -46,7 +51,7 @@ pub async fn verify_session_claim_to_uuid(
             .into_response());
     }
 
-    Ok(())
+    Ok((parsed_username, access_token.value().to_owned()))
 }
 
 #[axum::debug_handler]
@@ -112,4 +117,80 @@ pub async fn create_clock(
     };
 
     (StatusCode::OK, Json(clock)).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct EditClockBody {
+    uuid: String,
+}
+
+#[derive(Serialize)]
+pub struct EditClockResponse {
+    clock: Option<ClockSchema>,
+}
+
+pub async fn edit_clock(
+    cookies: CookieJar,
+    State(state): State<Context>,
+    Path(user_id): Path<Uuid>,
+    Json(payload): Json<EditClockBody>,
+) -> impl IntoResponse {
+    if let Err(reject) = verify_session_claim_to_uuid(&cookies, &state, &user_id).await {
+        return reject.into_response();
+    };
+
+    let Ok(uuid) = Uuid::try_from(payload.uuid.as_str()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            ContextError::HttpBody(Cow::Borrowed("body.uuid is not a Uuid")),
+        )
+            .into_response();
+    };
+
+    let clock_verified = match state
+        .clock_client()
+        .validate_user_claims_to_clock(ValidateUserClaimsToClockInput {
+            identity_pool_user_id: user_id,
+            uuid,
+        })
+        .await
+    {
+        Ok(x) => x,
+        Err(e @ ClockError::ClockNotFound(..)) => {
+            return (StatusCode::FORBIDDEN, ContextError::ClockError(dbg!(e))).into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ContextError::ClockError(dbg!(e)),
+            )
+                .into_response()
+        }
+    };
+
+    let edited_clock = match state
+        .clock_client()
+        .edit_clock(EditClockInput {
+            uuid,
+            update: EditClockInputStrategy::Publish(clock_verified),
+        })
+        .await
+    {
+        Ok(x) => x,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ContextError::ClockError(dbg!(e)),
+            )
+                .into_response()
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(EditClockResponse {
+            clock: edited_clock,
+        }),
+    )
+        .into_response()
 }
