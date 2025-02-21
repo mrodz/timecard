@@ -1,6 +1,5 @@
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import { useCallback, use, Suspense, memo } from "react";
+import { use, Suspense, memo } from "react";
 import { CurrentUserContext } from "./Layout";
 import { loadAllUserClocks } from "@/lib/api";
 import ClockList from "@/components/ClockList";
@@ -19,10 +18,8 @@ export default function Dashboard() {
 
 	return (
 		<div>
-			Dashboard!!!!!
-
 			<Card className="m-8 p-8">
-				<CardTitle>
+				<CardTitle className="mb-4">
 					Clocks
 				</CardTitle>
 				<CardContent>

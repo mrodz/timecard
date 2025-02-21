@@ -16,21 +16,28 @@ export interface ClockSchema {
 	clock_in_time: Date | undefined,
 }
 
-type ClockSchemaUnfixedDates = Omit<ClockSchema, keyof ['last_edit', 'clock_in_time']> & {
-	last_edit: number,
-	clock_in_time: number | undefined,
-}
+namespace ServerOutputFix {
+	export function clockSchemaInPlace(object: object): asserts object is ClockSchema {
+		if (typeof object !== 'object') throw TypeError()
+		if (!('identity_pool_user_id' in object)) throw TypeError()
+		if (!('uuid' in object)) throw TypeError()
+		if (!('name' in object)) throw TypeError()
+		if (!('last_edit' in object)) throw TypeError()
+		if (!('active' in object)) throw TypeError()
+		if (!('clock_in_time' in object)) throw TypeError()
 
-function fixDatesInPlaceServerOutput(object: object): asserts object is ClockSchema {
-	if ('last_edit' in object && typeof object.last_edit === "number") {
+		if (typeof object.last_edit !== "number") throw TypeError()
 		object.last_edit = new Date(object.last_edit * 1000)
-	}
 
-	if ('clock_in_time' in object && typeof object.clock_in_time === "number") {
-		object.clock_in_time = new Date(object.clock_in_time * 1000)
-	}
+		if (typeof object.clock_in_time === "number") {
+			object.clock_in_time = new Date(object.clock_in_time * 1000)
+		} else if (object.clock_in_time !== null) throw TypeError()
 
-	console.log(object)
+		if (typeof object.identity_pool_user_id !== "string") throw TypeError()
+		if (typeof object.uuid !== "string") throw TypeError()
+		if (typeof object.name !== "string") throw TypeError()
+		if (typeof object.active !== "boolean") throw TypeError()
+	}
 }
 
 export async function loadAllUserClocks(options: { userPoolId: string }): Promise<ClockSchema[]> {
@@ -52,7 +59,7 @@ export async function loadAllUserClocks(options: { userPoolId: string }): Promis
 	}
 
 	for (let i = 0; i < deserialized.length; i++) {
-		fixDatesInPlaceServerOutput(deserialized[i]);
+		ServerOutputFix.clockSchemaInPlace(deserialized[i]);
 	}
 
 	return deserialized;
@@ -80,7 +87,7 @@ export async function createUserClock(options: { userPoolId: string, name: strin
 
 	const deserialized = await response.json();
 
-	fixDatesInPlaceServerOutput(deserialized);
+	ServerOutputFix.clockSchemaInPlace(deserialized);
 
 	return deserialized;
 }
