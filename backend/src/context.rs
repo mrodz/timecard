@@ -2,26 +2,22 @@ pub mod clocks;
 
 use aws_config::SdkConfig;
 use aws_sdk_cognitoidentityprovider::operation::get_user::{GetUserError, GetUserOutput};
-use aws_sdk_dynamodb::operation::query::QueryError;
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use aws_smithy_runtime_api::{client::result::SdkError, http::Response};
 
 pub(crate) use aws_sdk_cognitoidentityprovider::Client as AwsCognitoClient;
 pub(crate) use aws_sdk_dynamodb::Client as AwsDynamoDbClient;
-pub(crate) use aws_sdk_secretsmanager::Client as AwsSecretsClient;
 
 use axum::{body::Body, http::StatusCode, response::IntoResponse};
 use clocks::{ClockClientDependency, ClockError};
 use tokio::sync::RwLock;
 
+use std::borrow::Cow;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
 use thiserror::Error;
-use url::Url;
 
 // Tell axum how to convert `AppError` into a response.
 impl IntoResponse for ContextError {
@@ -32,16 +28,6 @@ impl IntoResponse for ContextError {
         )
             .into_response()
     }
-}
-
-#[derive(Error, Debug)]
-pub enum RDSCredentialsError {
-    #[error("error with secrets manager: {0}")]
-    Aws(#[from] SdkError<GetSecretValueError, Response>),
-    #[error("this secret does not exist")]
-    SecretNotFound,
-    #[error("this secret does not conform to the JSON specification required")]
-    ParseError,
 }
 
 #[derive(Error, Debug)]
@@ -56,18 +42,14 @@ pub enum AuthError {
 
 #[derive(Error, Debug)]
 pub enum ContextError {
-    #[error("could not load credentials for database: {0}")]
-    RDSCredentialsInitialization(#[from] RDSCredentialsError),
-    #[error("database connection string is missing a password, and no secret key was found")]
-    MissingPassword,
-    #[error("database schema should be `postgres`, found `{0}`")]
-    BadSchema(String),
     #[error("could not parse url: {0}")]
     UrlParse(#[from] url::ParseError),
     #[error("could not authenticate: {0}")]
     AuthError(#[from] AuthError),
     #[error("error in clock interface: {0}")]
     ClockError(#[from] ClockError),
+    #[error("error parsing body: {0}")]
+    HttpBody(Cow<'static, str>)
 }
 
 #[derive(Clone, Debug)]
@@ -76,34 +58,6 @@ pub struct Context {
     aws_dynamodb: Arc<RwLock<AwsDynamoDbClient>>,
     aws_cognito: Arc<RwLock<AwsCognitoClient>>,
     clocks_client: Arc<dyn ClockClientDependency>,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
-struct RDSCredentials {
-    username: String,
-    password: String,
-}
-
-impl RDSCredentials {
-    pub async fn new<S: Into<String>>(
-        client: &AwsSecretsClient,
-        secret_id: S,
-    ) -> Result<Self, RDSCredentialsError> {
-        let response = client
-            .get_secret_value()
-            .secret_id(secret_id)
-            .send()
-            .await?;
-
-        let raw_string = response
-            .secret_string()
-            .ok_or(RDSCredentialsError::SecretNotFound)?;
-
-        let credentials = serde_json::from_str::<RDSCredentials>(raw_string)
-            .map_err(|_| RDSCredentialsError::ParseError)?;
-
-        Ok(credentials)
-    }
 }
 
 impl Context {

@@ -1,9 +1,12 @@
 import React, { PropsWithChildren } from "react";
 import { Card, CardContent, CardDescription, CardTitle } from "./ui/card";
 import { ClockSchema } from "@/lib/api";
+import useDateFormat from "@/lib/useDateFormat";
 
 export type UserClockProps = {
-	clock: ClockSchema
+	clock: ClockSchema,
+} | {
+	skeleton: string,
 }
 
 enum InvalidUserClockErrorVariant {
@@ -48,24 +51,41 @@ class UserClockStack extends React.Component<PropsWithChildren<{}>, { hasError: 
 	}
 }
 
-const UserClock: React.FC<UserClockProps> = ({ clock }) => {
+const UserClock: React.FC<UserClockProps> = (props) => {
+	if ("skeleton" in props) {
+		return (
+			<>
+				<CardDescription>Last Edit: Just Now</CardDescription>
+
+				<CardContent>
+					Loading...
+				</CardContent>
+			</>
+		)
+	}
+
+	const { clock } = props;
+
+	const { formatter } = useDateFormat()
+
 	let clockIn;
 
-	if (clock.clock_in_time !== undefined) {
-		clockIn = new Date(clock.clock_in_time)
-		if (isNaN(clockIn.valueOf())) throw new InvalidUserClockError(InvalidUserClockErrorVariant.ParseClockInDate)
+	if (clock.clock_in_time instanceof Date) {
+		const maybeClockIn = clock.clock_in_time;
+		if (isNaN(maybeClockIn.valueOf())) throw new InvalidUserClockError(InvalidUserClockErrorVariant.ParseClockInDate)
+		if (maybeClockIn.valueOf() !== 0) clockIn = maybeClockIn;
 	}
 
 	return (
 		<>
-			<CardDescription>Last Edit: {clock.last_edit}</CardDescription>
+			<CardDescription>Last Edit: {formatter.date.format(clock.last_edit)}</CardDescription>
 
 			<CardContent>
 				{clockIn === undefined ? (
 					<div>Not Clocked In</div>
 				) : (
 					<div>
-						{clockIn.toUTCString()}
+						{formatter.minute.format(clockIn)}
 					</div>
 				)}
 			</CardContent>
@@ -76,8 +96,8 @@ const UserClock: React.FC<UserClockProps> = ({ clock }) => {
 
 export default (props: UserClockProps) => {
 	return (
-		<Card className="w-1/6 p-4">
-			<CardTitle>{props.clock.name}</CardTitle>
+		<Card className="w-full p-4">
+			<CardTitle>{'skeleton' in props ? props.skeleton : props.clock.name}</CardTitle>
 			<UserClockStack> { /* BEGIN FALLIBLE RENDERING */}
 				<UserClock {...props} />
 			</UserClockStack> { /* END FALLIBLE RENDERING */}
