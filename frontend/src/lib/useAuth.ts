@@ -1,4 +1,4 @@
-import { CognitoAccessToken, CognitoIdToken, CognitoRefreshToken, CognitoUser, CognitoUserPool, CognitoUserSession, ICognitoUserPoolData } from "amazon-cognito-identity-js";
+import { CognitoAccessToken, CognitoIdToken, CognitoRefreshToken, CognitoUser, CognitoUserAttribute, CognitoUserPool, CognitoUserSession, ICognitoUserPoolData } from "amazon-cognito-identity-js";
 import { useCallback } from "react";
 
 const POOL_DATA = {
@@ -31,6 +31,23 @@ export function getAuthLogoutUrl(options?: { cognitoClientId?: string, logoutUri
 	params.set('logout_uri', options?.logoutUri ?? 'http://localhost:5173/');
 
 	return `https://auth.timecard.pro/logout?${params.toString()}`;
+}
+
+export function getAttributes(source: CognitoUserAttribute[], attribute: string): CognitoUserAttribute | undefined
+export function getAttributes(source: CognitoUserAttribute[], ...attributes: [string, ...string[]]): CognitoUserAttribute[] | undefined
+export function getAttributes(source: CognitoUserAttribute[], ...attributes: string[]): CognitoUserAttribute | CognitoUserAttribute[] | undefined {
+	let result = source?.filter((attribute) => attributes.includes(attribute.getName()))
+
+	if (attributes.length !== result.length) {
+		console.log(result, attributes)
+		return undefined;
+	}
+
+	if (result.length === 1) {
+		return result[0]
+	}
+
+	return result;
 }
 
 export default function useHandler() {

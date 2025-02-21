@@ -6,8 +6,7 @@ import useDateFormat from "@/lib/useDateFormat";
 export type UserClockProps = {
 	clock: ClockSchema,
 } | {
-	skeleton: boolean,
-	name: string,
+	skeleton: string,
 }
 
 enum InvalidUserClockErrorVariant {
@@ -97,8 +96,8 @@ const UserClock: React.FC<UserClockProps> = (props) => {
 
 export default (props: UserClockProps) => {
 	return (
-		<Card className="w-1/6 p-4">
-			<CardTitle>{'skeleton' in props ? props.name : props.clock.name}</CardTitle>
+		<Card className="w-full p-4">
+			<CardTitle>{'skeleton' in props ? props.skeleton : props.clock.name}</CardTitle>
 			<UserClockStack> { /* BEGIN FALLIBLE RENDERING */}
 				<UserClock {...props} />
 			</UserClockStack> { /* END FALLIBLE RENDERING */}

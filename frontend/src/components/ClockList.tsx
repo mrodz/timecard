@@ -1,38 +1,22 @@
 import { use, memo, useState } from "react";
-import { createUserClock, type ClockSchema } from "@/lib/api";
+import { ClockSchema } from "@/lib/api";
 import UserClock from "./UserClock";
-import { Button } from "@/components/ui/button";
-import { CurrentUserContext } from "@/pages/Layout";
+import CreateClock from "./modals/CreateClock";
 
 type ClockListProps = {
 	loadAllClocks: Promise<ClockSchema[]>
 }
 
 const ClockList = memo((props: ClockListProps) => {
-	const user = use(CurrentUserContext)!
 	const initialClocks = use(props.loadAllClocks)
 
 	const [clocks, setClocks] = useState(initialClocks)
 
 	const [creatingClock, setCreatingClock] = useState<string | null>(null);
 
-	const createClock = async () => {
-		const name = window.prompt("Enter name");
-
-		if (!name) {
-			window.alert("cannot be empty")
-			return;
-		}
-
-		setCreatingClock(name)
-
-		const clock = await createUserClock({
-			userPoolId: user.reactiveUser!.getUsername()!,
-			name,
-		})
-
+	const onClockCreationStart = (name: string) => setCreatingClock(name);
+	const onClockCreated = (clock: ClockSchema) => {
 		setCreatingClock(null)
-
 		setClocks((list) => {
 			list.push(clock);
 			return list;
@@ -40,12 +24,15 @@ const ClockList = memo((props: ClockListProps) => {
 	}
 
 	return (
-		<div className="flex flex-row gap-4">
-			{clocks.map((clock, i) => <UserClock clock={clock} key={i} />)}
+		<div className="flex flex-col gap-4">
+			<div>
+				<CreateClock onClockCreationStart={onClockCreationStart} onClockCreated={onClockCreated} />
+			</div>
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+				{creatingClock && <UserClock skeleton={creatingClock} />}
 
-			{creatingClock && <UserClock skeleton name={creatingClock} />}
-
-			<Button className="self-center" onClick={createClock}>Create Clock</Button>
+				{clocks.sort((a, b) => b.last_edit.valueOf() - a.last_edit.valueOf()).map((clock, i) => <UserClock clock={clock} key={i} />)}
+			</div>
 		</div>
 	)
 });
