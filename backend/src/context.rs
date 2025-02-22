@@ -2,7 +2,6 @@ pub mod clocks;
 
 use aws_config::SdkConfig;
 use aws_sdk_cognitoidentityprovider::operation::get_user::{GetUserError, GetUserOutput};
-use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use aws_smithy_runtime_api::{client::result::SdkError, http::Response};
 
 pub(crate) use aws_sdk_cognitoidentityprovider::Client as AwsCognitoClient;

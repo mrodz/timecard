@@ -18,20 +18,15 @@ import { CurrentUserContext } from "@/pages/Layout";
 import { use, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { PlusCircle } from "lucide-react";
+import { Clock } from "@/lib/formProperties";
 
 const createClockSchema = z.object({
-	name: z.string({
-		required_error: "Name is required",
-	}).trim().min(1, {
-		message: 'Name must not be empty',
-	}).max(64, {
-		message: 'Name is too long'
-	})
+	name: Clock.NAME,
 })
 
 type CreateClockProps = {
-	onClockCreationStart: (name: string) => void;
-	onClockCreated: (clock: ClockSchema) => void;
+	onClockCreationStart?: (name: string) => void;
+	onClockCreated?: (clock: ClockSchema) => void;
 }
 
 export default function CreateClock(props: CreateClockProps) {
@@ -40,6 +35,9 @@ export default function CreateClock(props: CreateClockProps) {
 	const [open, setOpen] = useState(false)
 	const form = useForm<z.infer<typeof createClockSchema>>({
 		resolver: zodResolver(createClockSchema),
+		defaultValues: {
+			name: ''
+		}
 	})
 
 	useEffect(() => {
@@ -47,7 +45,7 @@ export default function CreateClock(props: CreateClockProps) {
 	}, [form.formState.isSubmitSuccessful, form.reset])
 
 	const submit = async (values: z.infer<typeof createClockSchema>) => {
-		props.onClockCreationStart(values.name)
+		props?.onClockCreationStart?.(values.name)
 		setOpen(false)
 
 		const clock = await createUserClock({
@@ -55,7 +53,7 @@ export default function CreateClock(props: CreateClockProps) {
 			name: values.name,
 		})
 
-		props.onClockCreated(clock)
+		props?.onClockCreated?.(clock)
 		form.reset()
 	}
 

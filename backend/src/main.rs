@@ -32,11 +32,11 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/user", get(routes::user::get_user))
         .route("/redirect", get(routes::cognito::aws_cognito_redirect))
-        .route("/clocks/{user_id}", get(routes::clocks::get_clocks))
-        .route("/clocks/{user_id}", post(routes::clocks::create_clock))
-        .route("/clocks/{user_id}/edit", post(routes::clocks::edit_clock))
+        .route("/user", get(routes::user::get_user))
+        .route("/user/{user_id}/clocks", get(routes::clocks::get_clocks))
+        .route("/user/{user_id}/clocks", post(routes::clocks::create_clock))
+        .route("/user/{user_id}/clocks/{clock_id}/edit", post(routes::clocks::edit_clock))
         .layer(
             ServiceBuilder::new()
                 .layer(cors)
