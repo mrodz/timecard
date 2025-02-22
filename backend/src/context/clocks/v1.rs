@@ -1,7 +1,7 @@
 use std::sync::Weak;
 
 use async_trait::async_trait;
-use aws_sdk_dynamodb::types::{AttributeValue, AttributeValueUpdate, ReturnValue};
+use aws_sdk_dynamodb::types::{AttributeValue, ReturnValue};
 use tokio::sync::RwLock;
 
 use crate::context::ClockError;
@@ -97,11 +97,15 @@ impl ClockClientDependency for ClockClient {
                     .update_item()
                     .table_name("timeclock-clocks")
                     .set_key(Some([pk, sk].into()))
-                    .update_expression("SET name=:name, active=:active, clock_in_time=:clock_in_time, last_edit=:last_edit")
+                    .update_expression("SET #name=:name, #active=:active, #clock_in_time=:clock_in_time, #last_edit=:last_edit")
                     .expression_attribute_values(":name", attributes.remove("name").unwrap())
                     .expression_attribute_values(":active", attributes.remove("active").unwrap())
                     .expression_attribute_values(":clock_in_time", attributes.remove("clock_in_time").unwrap())
                     .expression_attribute_values(":last_edit", AttributeValue::S(Utc::now().to_rfc3339()))
+                    .expression_attribute_names("#name", "name")
+                    .expression_attribute_names("#active", "active")
+                    .expression_attribute_names("#clock_in_time", "clock_in_time")
+                    .expression_attribute_names("#last_edit", "last_edit")
                     .return_values(ReturnValue::AllNew)
                     .send()
                     .await?;
@@ -121,7 +125,7 @@ impl ClockClientDependency for ClockClient {
                 let pk = AttributeValue::S(identity_pool_user_id.to_string());
                 let sk = AttributeValue::S(input.uuid.to_string());
 
-                let mut update_expression = "SET last_edit=:last_edit".to_owned();
+                let mut update_expression = "SET #last_edit=:last_edit".to_owned();
 
                 let mut query = dynamodb_client
                     .update_item()
@@ -133,35 +137,44 @@ impl ClockClientDependency for ClockClient {
                         ]
                         .into(),
                     ))
-                    .expression_attribute_values(":last_edit", AttributeValue::S(Utc::now().to_rfc3339()))
+                    .expression_attribute_values(
+                        ":last_edit",
+                        AttributeValue::S(Utc::now().to_rfc3339()),
+                    )
+                    .expression_attribute_names("#last_edit", "last_edit")
                     .return_values(ReturnValue::AllNew);
 
                 let mut edits = 0;
 
                 if let Some(name) = name {
-                    update_expression += ", name=:name";
-                    query = query.expression_attribute_values(":name", AttributeValue::S(name));
+                    update_expression += ", #name=:name";
+                    query = query
+                        .expression_attribute_values(":name", AttributeValue::S(name))
+                        .expression_attribute_names("#name", "name");
                     edits += 1;
                 }
 
                 if let Some(active) = active {
-                    update_expression += ", active=:active";
-                    query =
-                        query.expression_attribute_values(":active", AttributeValue::Bool(active));
+                    update_expression += ", #active=:active";
+                    query = query
+                        .expression_attribute_values(":active", AttributeValue::Bool(active))
+                        .expression_attribute_names("#active", "active");
                     edits += 1;
                 }
 
                 if let Some(clock_in_time) = clock_in_time {
-                    update_expression += ", clock_in_time=:clock_in_time";
-                    query = query.expression_attribute_values(
-                        ":clock_in_time",
-                        AttributeValue::S(
-                            clock_in_time
-                                .as_ref()
-                                .map(DateTime::to_rfc3339)
-                                .unwrap_or_else(String::new),
-                        ),
-                    );
+                    update_expression += ", #clock_in_time=:clock_in_time";
+                    query = query
+                        .expression_attribute_values(
+                            ":clock_in_time",
+                            AttributeValue::S(
+                                clock_in_time
+                                    .as_ref()
+                                    .map(DateTime::to_rfc3339)
+                                    .unwrap_or_else(String::new),
+                            ),
+                        )
+                        .expression_attribute_names("#clock_in_time", "clock_in_time");
                     edits += 1;
                 }
 
@@ -169,7 +182,12 @@ impl ClockClientDependency for ClockClient {
                     return Ok(None);
                 }
 
-                let updated_clock = query.update_expression(update_expression).send().await?.attributes.expect("`ReturnValue::AllNew` should have been set");
+                let updated_clock = query
+                    .update_expression(update_expression)
+                    .send()
+                    .await?
+                    .attributes
+                    .expect("`ReturnValue::AllNew` should have been set");
 
                 Ok(Some(updated_clock.try_into()?))
             }

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::ops::Deref;
 
 use axum::{
     extract::{Path, State},
@@ -7,6 +7,7 @@ use axum::{
     Json,
 };
 use axum_extra::extract::CookieJar;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -119,9 +120,22 @@ pub async fn create_clock(
     (StatusCode::OK, Json(clock)).into_response()
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+struct OptionalDateTime(#[serde(with = "chrono::serde::ts_seconds_option")] Option<DateTime<Utc>>);
+
+impl Deref for OptionalDateTime {
+    type Target = Option<DateTime<Utc>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Deserialize, Debug)]
 pub struct EditClockBody {
-    uuid: String,
+    name: Option<String>,
+    active: Option<bool>,
+    clock_in_time: Option<OptionalDateTime>,
 }
 
 #[derive(Serialize)]
@@ -132,30 +146,22 @@ pub struct EditClockResponse {
 pub async fn edit_clock(
     cookies: CookieJar,
     State(state): State<Context>,
-    Path(user_id): Path<Uuid>,
+    Path((user_id, clock_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<EditClockBody>,
 ) -> impl IntoResponse {
     if let Err(reject) = verify_session_claim_to_uuid(&cookies, &state, &user_id).await {
         return reject.into_response();
     };
 
-    let Ok(uuid) = Uuid::try_from(payload.uuid.as_str()) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            ContextError::HttpBody(Cow::Borrowed("body.uuid is not a Uuid")),
-        )
-            .into_response();
-    };
-
-    let clock_verified = match state
+    match state
         .clock_client()
         .validate_user_claims_to_clock(ValidateUserClaimsToClockInput {
             identity_pool_user_id: user_id,
-            uuid,
+            uuid: clock_id,
         })
         .await
     {
-        Ok(x) => x,
+        Ok(..) => (),
         Err(e @ ClockError::ClockNotFound(..)) => {
             return (StatusCode::FORBIDDEN, ContextError::ClockError(dbg!(e))).into_response()
         }
@@ -171,8 +177,13 @@ pub async fn edit_clock(
     let edited_clock = match state
         .clock_client()
         .edit_clock(EditClockInput {
-            uuid,
-            update: EditClockInputStrategy::Publish(clock_verified),
+            uuid: clock_id,
+            update: EditClockInputStrategy::Fields {
+                identity_pool_user_id: user_id,
+                active: payload.active,
+                name: payload.name,
+                clock_in_time: payload.clock_in_time.as_deref().cloned(),
+            },
         })
         .await
     {

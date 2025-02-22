@@ -1,10 +1,15 @@
-import React, { PropsWithChildren } from "react";
+import React, { forwardRef, PropsWithChildren, useImperativeHandle, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardTitle } from "./ui/card";
 import { ClockSchema } from "@/lib/api";
 import useDateFormat from "@/lib/useDateFormat";
+import EditClock from "@/components/modals/EditClock";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Menu } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 export type UserClockProps = {
 	clock: ClockSchema,
+	onEdit?: (newClock: ClockSchema) => void,
 } | {
 	skeleton: string,
 }
@@ -51,7 +56,31 @@ class UserClockStack extends React.Component<PropsWithChildren<{}>, { hasError: 
 	}
 }
 
-const UserClock: React.FC<UserClockProps> = (props) => {
+type UserClockPopoverProps = {
+	clock: ClockSchema,
+	onClockEdit: (clock: ClockSchema | null) => void;
+}
+
+const UserClockPopover: React.FC<UserClockPopoverProps> = (props) => {
+	return (
+		<Popover>
+			<PopoverTrigger className="bg-zinc-100 p-1"><Menu /></PopoverTrigger>
+			<PopoverContent>
+				<ul className="grid grid-cols-1 items-center">
+					<EditClock clock={props.clock} onClockEdit={props.onClockEdit} />
+					{/* TODO: Delete Clock */}
+				</ul>
+			</PopoverContent>
+		</Popover>
+	)
+}
+
+
+type UserClockRef = {
+	edit(clockReplacement: ClockSchema | null): void,
+}
+
+const UserClock = forwardRef<UserClockRef, UserClockProps>((props, ref) => {
 	if ("skeleton" in props) {
 		return (
 			<>
@@ -64,9 +93,15 @@ const UserClock: React.FC<UserClockProps> = (props) => {
 		)
 	}
 
-	const { clock } = props;
+	const [clock, setClock] = useState(props.clock);
 
 	const { formatter } = useDateFormat()
+
+	useImperativeHandle(ref, () => ({
+		edit(clockReplacement: ClockSchema | null) {
+			if (!!clockReplacement) setClock(clockReplacement)
+		}
+	}), [setClock])
 
 	let clockIn;
 
@@ -92,14 +127,36 @@ const UserClock: React.FC<UserClockProps> = (props) => {
 
 		</>
 	)
-}
+})
 
 export default (props: UserClockProps) => {
+	const clockRef = useRef<UserClockRef>(null)
+
+	const [infallibleName, setInfallibleName] = useState('skeleton' in props ? props.skeleton : props.clock.name)
+
+	const onClockEdit = (newClock: ClockSchema | null) => {
+		clockRef.current!.edit(newClock)
+		if (!!newClock?.name) {
+			setInfallibleName(newClock.name)
+		}
+
+		if ('onEdit' in props && !!newClock) {
+			props.onEdit?.(newClock)
+		}
+	}
+
 	return (
 		<Card className="w-full p-4">
-			<CardTitle>{'skeleton' in props ? props.skeleton : props.clock.name}</CardTitle>
+			<CardTitle>
+				<div className="grid grid-cols-[1fr_auto]">
+					<span>
+						{infallibleName}
+					</span>
+					{'skeleton' in props ? <Spinner /> : <UserClockPopover onClockEdit={onClockEdit} clock={props.clock} />}
+				</div>
+			</CardTitle>
 			<UserClockStack> { /* BEGIN FALLIBLE RENDERING */}
-				<UserClock {...props} />
+				<UserClock ref={clockRef} {...props} />
 			</UserClockStack> { /* END FALLIBLE RENDERING */}
 		</Card>
 	)
