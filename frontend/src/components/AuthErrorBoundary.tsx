@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { buttonVariants } from "./ui/button";
-import { Component } from "react";
+import { Component, PropsWithChildren } from "react";
 import { getAuthUrl, InvalidCodeRedirectError } from "@/lib/useAuth";
 import { Card } from "./ui/card";
 
-export default class AuthErrorBoundary extends Component<{ children: any }, { hasError: boolean, error: any }> {
-	constructor(props: { children: any }) {
+export default class AuthErrorBoundary extends Component<PropsWithChildren<{}>, { hasError: boolean, error: any }> {
+	constructor(props: PropsWithChildren<{}>) {
 		super(props)
 		this.state = { error: undefined, hasError: false }
 	}
@@ -53,7 +53,7 @@ export default class AuthErrorBoundary extends Component<{ children: any }, { ha
 							: <GenericError />
 						}
 					</Card>
-				</div >
+				</div>
 			)
 		}
 		return this.props.children;

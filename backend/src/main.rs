@@ -4,8 +4,7 @@ mod context;
 mod routes;
 
 use anyhow::{Context as AnyhowContext, Result};
-use aws_config::{meta::region::RegionProviderChain, Region};
-use axum::{routing::get, Router};
+use axum::{routing::{get, post}, Router};
 use context::Context;
 use std::{net::SocketAddr, time::Duration};
 use tower::ServiceBuilder;
@@ -17,24 +16,12 @@ use tower_http::timeout::TimeoutLayer;
 async fn main() -> Result<()> {
     dotenv::dotenv().context("could not load environment file")?;
 
-    let region_provider =
-        RegionProviderChain::first_try("us-west-1").or_else(Region::from_static("us-west-1"));
-
-    let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::v2024_03_28()).await;
+    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2024_03_28()).load().await;
 
     println!("{:?}", std::env::var("AWS_PROFILE"));
 
-    let context = Context::new(
-        sdk_config,
-        None::<&str>,
-        "postgres://postgres:postgres@localhost:3588/postgres",
-    )
-    .await?;
+    let context = Context::new(sdk_config).await?;
 
-    // let cors_origins = ["http://localhost:5173".parse().unwrap(), "http://localhost:4000".parse().unwrap()];
-
-    // let cors = CorsLayer::new().allow_origin(cors_origins).allow_credentials(true).allow_methods([Method::GET, Method::HEAD, Method::PUT, Method::PATCH, Method::POST, Method::DELETE]).allow_headers(ContentType, "*");
-    // let cors = CorsLayer::very_permissive();
     let cors = CorsLayer::new()
         .allow_headers(AllowHeaders::mirror_request())
         .allow_methods(AllowMethods::mirror_request())
@@ -45,8 +32,12 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/user", get(routes::user::get_user))
         .route("/redirect", get(routes::cognito::aws_cognito_redirect))
+        .route("/user", get(routes::user::get_user))
+        .route("/user/{user_id}/clocks", get(routes::clocks::get_clocks))
+        .route("/user/{user_id}/clocks", post(routes::clocks::create_clock))
+        .route("/user/{user_id}/clocks/{clock_id}/edit", post(routes::clocks::edit_clock))
+        .route("/user/{user_id}/clocks/{clock_id}/delete", post(routes::clocks::delete_clock))
         .layer(
             ServiceBuilder::new()
                 .layer(cors)
