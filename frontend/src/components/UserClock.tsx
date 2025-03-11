@@ -6,10 +6,12 @@ import EditClock from "@/components/modals/EditClock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Menu } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import DeleteClock from "./modals/DeleteClock";
 
 export type UserClockProps = {
 	clock: ClockSchema,
 	onEdit?: (newClock: ClockSchema) => void,
+	onDeleteStart?: () => void,
 } | {
 	skeleton: string,
 }
@@ -58,7 +60,8 @@ class UserClockStack extends React.Component<PropsWithChildren<{}>, { hasError: 
 
 type UserClockPopoverProps = {
 	clock: ClockSchema,
-	onClockEdit: (clock: ClockSchema | null) => void;
+	onClockEdit: (clock: ClockSchema | null) => void,
+	onClockDeleteStart?: () => void,
 }
 
 const UserClockPopover: React.FC<UserClockPopoverProps> = (props) => {
@@ -66,8 +69,9 @@ const UserClockPopover: React.FC<UserClockPopoverProps> = (props) => {
 		<Popover>
 			<PopoverTrigger className="bg-zinc-100 p-1"><Menu /></PopoverTrigger>
 			<PopoverContent>
-				<ul className="grid grid-cols-1 items-center">
+				<ul className="grid grid-cols-1 items-center gap-2">
 					<EditClock clock={props.clock} onClockEdit={props.onClockEdit} />
+					<DeleteClock clock={props.clock} onClockDeleteStart={props.onClockDeleteStart} />
 					{/* TODO: Delete Clock */}
 				</ul>
 			</PopoverContent>
@@ -152,7 +156,7 @@ export default (props: UserClockProps) => {
 					<span className="truncate">
 						{infallibleName}
 					</span>
-					{'skeleton' in props ? <Spinner /> : <UserClockPopover onClockEdit={onClockEdit} clock={props.clock} />}
+					{'skeleton' in props ? <Spinner /> : <UserClockPopover onClockDeleteStart={props.onDeleteStart} onClockEdit={onClockEdit} clock={props.clock} />}
 				</div>
 			</CardTitle>
 			<UserClockStack> { /* BEGIN FALLIBLE RENDERING */}

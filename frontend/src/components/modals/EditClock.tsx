@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Clock } from "@/lib/formProperties"
 import { cn } from "@/lib/utils"
-import { ClockSchema, editUserClock } from "@/lib/api"
+import { ClockSchema } from "@/lib/api"
 import { Pencil } from "lucide-react"
+import { editUserClock } from "@/lib/api/clocks"
 
 const editClockSchema = z.object({
 	name: Clock.NAME.optional(),
