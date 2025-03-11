@@ -149,7 +149,7 @@ export default (props: UserClockProps) => {
 		<Card className="w-full p-4">
 			<CardTitle>
 				<div className="grid grid-cols-[1fr_auto]">
-					<span>
+					<span className="truncate">
 						{infallibleName}
 					</span>
 					{'skeleton' in props ? <Spinner /> : <UserClockPopover onClockEdit={onClockEdit} clock={props.clock} />}

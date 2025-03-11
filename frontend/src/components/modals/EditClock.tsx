@@ -57,8 +57,8 @@ export default function EditClock(props: EditClockProps) {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger className={cn(buttonVariants({ variant: 'outline' }), 'self-center w-min mx-auto text-slate-950')}>
-				Edit "{props.clock.name}" <Pencil strokeWidth={2} size={32} className="bg-lime-500 text-slate-100 rounded-full box-content p-1" />
+			<DialogTrigger className={cn(buttonVariants({ variant: 'outline' }), 'self-center w-full mx-auto text-slate-950 gap-0')}>
+				Edit "<span className="truncate">{props.clock.name}</span>" <Pencil strokeWidth={2} size={32} className="bg-lime-500 text-slate-100 rounded-full box-content ml-1 p-1" />
 			</DialogTrigger>
 			<DialogContent>
 				<DialogHeader>
