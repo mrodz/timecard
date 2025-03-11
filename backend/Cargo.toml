@@ -26,3 +26,6 @@ aws-sdk-dynamodb = "1.61.0"
 uuid = { version = "1.12.1", features = ["serde", "v4"] }
 async-trait = "0.1.86"
 chrono = { version = "0.4.39", features = ["serde"] }
+
+[features]
+expose_shared_clients = []

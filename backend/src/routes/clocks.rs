@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 use crate::context::{
     clocks::{
-        ClockError, ClockSchema, CreateClockInput, EditClockInput, EditClockInputStrategy,
-        GetClocksInput, ValidateUserClaimsToClockInput,
+        ClockError, ClockSchema, CreateClockInput, DeleteClockInput, EditClockInput,
+        EditClockInputStrategy, GetClocksInput, ValidateUserClaimsToClockInput,
     },
     AuthError, Context, ContextError,
 };
@@ -143,6 +143,11 @@ pub struct EditClockResponse {
     clock: Option<ClockSchema>,
 }
 
+#[derive(Serialize)]
+pub struct DeleteClockResponse {
+    clock: ClockSchema,
+}
+
 pub async fn edit_clock(
     cookies: CookieJar,
     State(state): State<Context>,
@@ -201,6 +206,63 @@ pub async fn edit_clock(
         StatusCode::OK,
         Json(EditClockResponse {
             clock: edited_clock,
+        }),
+    )
+        .into_response()
+}
+
+pub async fn delete_clock(
+    cookies: CookieJar,
+    State(state): State<Context>,
+    Path((user_id, clock_id)): Path<(Uuid, Uuid)>,
+) -> impl IntoResponse {
+    if let Err(reject) = verify_session_claim_to_uuid(&cookies, &state, &user_id).await {
+        return reject.into_response();
+    };
+
+    match state
+        .clock_client()
+        .validate_user_claims_to_clock(ValidateUserClaimsToClockInput {
+            identity_pool_user_id: user_id,
+            uuid: clock_id,
+        })
+        .await
+    {
+        Ok(..) => (),
+        Err(e @ ClockError::ClockNotFound(..)) => {
+            return (StatusCode::FORBIDDEN, ContextError::ClockError(dbg!(e))).into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ContextError::ClockError(dbg!(e)),
+            )
+                .into_response()
+        }
+    };
+
+    let deleted_clock = match state
+        .clock_client()
+        .delete_clock(DeleteClockInput {
+            identity_pool_user_id: user_id,
+            uuid: clock_id,
+        })
+        .await
+    {
+        Ok(x) => x,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ContextError::ClockError(dbg!(e)),
+            )
+                .into_response()
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(DeleteClockResponse {
+            clock: deleted_clock,
         }),
     )
         .into_response()

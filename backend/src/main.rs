@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
         .route("/user/{user_id}/clocks", get(routes::clocks::get_clocks))
         .route("/user/{user_id}/clocks", post(routes::clocks::create_clock))
         .route("/user/{user_id}/clocks/{clock_id}/edit", post(routes::clocks::edit_clock))
+        .route("/user/{user_id}/clocks/{clock_id}/delete", post(routes::clocks::delete_clock))
         .layer(
             ServiceBuilder::new()
                 .layer(cors)
