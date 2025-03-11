@@ -2,6 +2,11 @@ pub mod clocks;
 
 use aws_config::SdkConfig;
 use aws_sdk_cognitoidentityprovider::operation::get_user::{GetUserError, GetUserOutput};
+use aws_sdk_dynamodb::operation::delete_item::DeleteItemError;
+use aws_sdk_dynamodb::operation::get_item::GetItemError;
+use aws_sdk_dynamodb::operation::put_item::PutItemError;
+use aws_sdk_dynamodb::operation::query::QueryError;
+use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_smithy_runtime_api::{client::result::SdkError, http::Response};
 
 pub(crate) use aws_sdk_cognitoidentityprovider::Client as AwsCognitoClient;
@@ -9,12 +14,8 @@ pub(crate) use aws_sdk_dynamodb::Client as AwsDynamoDbClient;
 
 use axum::{body::Body, http::StatusCode, response::IntoResponse};
 use clocks::{ClockClientDependency, ClockError};
-use tokio::sync::RwLock;
-
-use std::borrow::Cow;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use thiserror::Error;
 
@@ -47,13 +48,27 @@ pub enum ContextError {
     AuthError(#[from] AuthError),
     #[error("error in clock interface: {0}")]
     ClockError(#[from] ClockError),
-    #[error("error parsing body: {0}")]
-    HttpBody(Cow<'static, str>)
+}
+
+#[derive(Error, Debug)]
+pub enum AwsDynamodbError {
+    #[error("error with dynamodb QUERY interface: {0}")]
+    AwsDynamodbQuery(#[from] SdkError<QueryError, Response>),
+    #[error("error with dynamodb PUT interface: {0}")]
+    AwsDynamodbPut(#[from] SdkError<PutItemError, Response>),
+    #[error("error with dynamodb GET interface: {0}")]
+    AwsDynamodbGet(#[from] SdkError<GetItemError, Response>),
+    #[error("error with dynamodb UPDATE interface: {0}")]
+    AwsDynamodbUpdate(#[from] SdkError<UpdateItemError, Response>),
+    #[error("error with dynamodb DELETE interface: {0}")]
+    AwsDynamodbDelete(#[from] SdkError<DeleteItemError, Response>),
 }
 
 #[derive(Clone, Debug)]
 pub struct Context {
+    #[cfg_attr(not(feature = "expose_shared_clients"), allow(unused))]
     aws_sdk_config: Arc<RwLock<SdkConfig>>,
+    #[cfg_attr(not(feature = "expose_shared_clients"), allow(unused))]
     aws_dynamodb: Arc<RwLock<AwsDynamoDbClient>>,
     aws_cognito: Arc<RwLock<AwsCognitoClient>>,
     clocks_client: Arc<dyn ClockClientDependency>,
@@ -75,10 +90,14 @@ impl Context {
         })
     }
 
+    #[cfg(feature = "expose_shared_clients")]
     pub async fn aws_sdk_config<F, T, E>(&self, callback: F) -> Result<T, ContextError>
     where
-        F: for<'c> FnOnce(&'c SdkConfig) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
-            + Send,
+        F: for<'c> FnOnce(
+                &'c SdkConfig,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<T, E>> + Send + 'c>,
+            > + Send,
         T: Send,
         E: Send,
         ContextError: From<E>,
@@ -88,12 +107,14 @@ impl Context {
         Ok(output)
     }
 
+    #[cfg(feature = "expose_shared_clients")]
     pub async fn aws_cognito_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
     where
         F: for<'c> FnOnce(
                 &'c AwsCognitoClient,
-            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
-            + Send,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<T, E>> + Send + 'c>,
+            > + Send,
         T: Send,
         E: Send,
         ContextError: From<E>,
@@ -103,12 +124,14 @@ impl Context {
         Ok(output)
     }
 
+    #[cfg(feature = "expose_shared_clients")]
     pub async fn aws_dynamodb_client<F, T, E>(&self, callback: F) -> Result<T, ContextError>
     where
         F: for<'c> FnOnce(
                 &'c AwsDynamoDbClient,
-            ) -> Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'c>>
-            + Send,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<T, E>> + Send + 'c>,
+            > + Send,
         T: Send,
         E: Send,
         ContextError: From<E>,

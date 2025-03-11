@@ -38,7 +38,8 @@ impl ClockClientDependency for ClockClient {
                 AttributeValue::S(input.0.to_string()),
             )
             .send()
-            .await?;
+            .await
+            .map_err(|e| ClockError::DatabaseError(AwsDynamodbError::from(e)))?;
 
         let mut result = Vec::with_capacity(clocks_belonging_to_user.items().len());
 
@@ -67,7 +68,8 @@ impl ClockClientDependency for ClockClient {
             .table_name("timeclock-clocks")
             .set_item(Some(to_insert.clone().into()))
             .send()
-            .await?;
+            .await
+            .map_err(|e| ClockError::DatabaseError(AwsDynamodbError::from(e)))?;
 
         Ok(to_insert)
     }
@@ -108,7 +110,8 @@ impl ClockClientDependency for ClockClient {
                     .expression_attribute_names("#last_edit", "last_edit")
                     .return_values(ReturnValue::AllNew)
                     .send()
-                    .await?;
+                    .await
+                    .map_err(|e| ClockError::DatabaseError(AwsDynamodbError::from(e)))?;
 
                 let attributes = clock
                     .attributes
@@ -185,7 +188,8 @@ impl ClockClientDependency for ClockClient {
                 let updated_clock = query
                     .update_expression(update_expression)
                     .send()
-                    .await?
+                    .await
+                    .map_err(|e| ClockError::DatabaseError(AwsDynamodbError::from(e)))?
                     .attributes
                     .expect("`ReturnValue::AllNew` should have been set");
 
@@ -219,7 +223,8 @@ impl ClockClientDependency for ClockClient {
                 .into(),
             ))
             .send()
-            .await?;
+            .await
+            .map_err(|e| ClockError::DatabaseError(AwsDynamodbError::from(e)))?;
 
         let Some(clock_attributes) = maybe_clock.item else {
             return Err(ClockError::ClockNotFound(
@@ -229,5 +234,41 @@ impl ClockClientDependency for ClockClient {
         };
 
         Ok(clock_attributes.try_into()?)
+    }
+
+    async fn delete_clock(
+        &self,
+        input: DeleteClockInput,
+    ) -> Result<ClockSchema, ClockError> {
+        let dynamodb_client_shared = self
+            .dynamodb_client
+            .upgrade()
+            .expect("dynamo_db_client dropped");
+
+        let dynamodb_client = dynamodb_client_shared.read().await;
+
+        let maybe_deleted_clock = dynamodb_client
+            .delete_item()
+            .table_name("timeclock-clocks")
+            .set_key(Some(
+                [
+                    (
+                        "identity_pool_user_id".to_owned(),
+                        AttributeValue::S(input.identity_pool_user_id.to_string()),
+                    ),
+                    ("uuid".to_owned(), AttributeValue::S(input.uuid.to_string())),
+                ]
+                .into(),
+            ))
+            .return_values(ReturnValue::AllOld)
+            .send()
+            .await
+            .map_err(|e| ClockError::DatabaseError(AwsDynamodbError::from(e)))?;
+
+        let Some(deleted_clock) = maybe_deleted_clock.attributes else {
+            return Err(ClockError::ClockNotFound(input.identity_pool_user_id, input.uuid));
+        };
+
+        Ok(deleted_clock.try_into()?)
     }
 }

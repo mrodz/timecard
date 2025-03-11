@@ -13,12 +13,13 @@ import { Input } from "@/components/ui/input"
 import { z } from "zod"
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod"
-import { ClockSchema, createUserClock } from "@/lib/api";
+import { ClockSchema } from "@/lib/api";
 import { CurrentUserContext } from "@/pages/Layout";
 import { use, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { PlusCircle } from "lucide-react";
 import { Clock } from "@/lib/formProperties";
+import { createUserClock } from "@/lib/api/clocks";
 
 const createClockSchema = z.object({
 	name: Clock.NAME,

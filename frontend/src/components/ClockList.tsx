@@ -27,12 +27,19 @@ const ClockList = (props: ClockListProps) => {
 		setClocks((clocks) => {
 			for (let i = 0; i < clocks.length; i++) {
 				if (clocks[i].uuid === newClock.uuid) {
-					clocks[i] = newClock;
+					clocks[i] = newClock
 					return [...clocks]
 				}
 			}
 			// never
 			return clocks
+		})
+	}
+
+	const onClockDeleteStart = (deletedIndex: number) => {
+		setClocks((clocks) => {
+			delete clocks[deletedIndex]
+			return [...clocks]
 		})
 	}
 
@@ -44,9 +51,13 @@ const ClockList = (props: ClockListProps) => {
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
 				{creatingClock && <UserClock skeleton={creatingClock} />}
 
-				{clocks.sort((a, b) => b.last_edit.valueOf() - a.last_edit.valueOf()).map((clock) => (
-					<UserClock onEdit={onClockEdit} clock={clock} key={clock.uuid} />
-				))}
+				{clocks.sort((a, b) => b.last_edit.valueOf() - a.last_edit.valueOf()).map((clock, i) => {
+					if (!clock) return null // the `delete` runs before the state change is propagated, so ignore ghost entry
+
+					return (
+						<UserClock onDeleteStart={() => onClockDeleteStart(i)} onEdit={onClockEdit} clock={clock} key={clock.uuid} />
+					)
+				})}
 			</div>
 		</div>
 	)
